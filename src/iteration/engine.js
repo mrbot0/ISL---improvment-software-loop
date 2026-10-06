@@ -545,7 +545,7 @@ export async function runIteration({ trigger = 'loop', signal, resume = null } =
        * gate passed — it compiles, exports nothing new, breaks no suite, boots fine — because none
        * of them asks whether this is the change that was requested. The reviewer did object, with a
        * 55, and was outvoted by arithmetic: review weighs 0.2, so the total came to 90 and it
-       * committed. RentAll's search bar lost personalisation in production.
+       * committed. A live search feature lost its personalisation in production.
        *
        * Both rules below are deterministic and both are about intent rather than mechanics.
        */

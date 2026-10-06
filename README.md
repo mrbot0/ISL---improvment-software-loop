@@ -5,7 +5,7 @@ specialist AI agents (security, tests, performance, quality, frontend, services,
 layer of supervisory managers at *any* code folder, iterates on it in a sandbox, proves the app
 still boots, and lands the change — all from an enterprise dashboard behind a login.
 
-It is the evolution of the RentAll agent control plane into a reusable platform: the same agents,
+It is the evolution of a single-product agent control plane into a reusable platform: the same agents,
 the same managers, the same dashboard — plus everything below.
 
 ## What's new over the base control plane

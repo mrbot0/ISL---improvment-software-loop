@@ -159,7 +159,7 @@ export async function plan({ logger = log.for('planner'), signal, iterationId = 
   /*
    * The product is named by the Context Manager, not hardcoded.
    *
-   * This prompt opened with "You are the tech lead for RentAll, a peer-to-peer rental marketplace"
+   * This prompt opened by naming one specific product and describing its business domain
    * — true for the project it was written against and false for every other one ISL can be pointed
    * at. A planner told it is working on the wrong product plans for the wrong product, and the
    * multi-project foundation underneath it made that a live defect rather than a tidiness issue.
@@ -222,7 +222,7 @@ Return ONLY JSON:
    * WHAT THE APPLICATION IS, BEFORE DECIDING WHAT TO DO TO IT.
    *
    * The planner previously saw path facts, the operator scope and past lessons — but nothing about
-   * the application itself. It chose work for a peer-to-peer rental marketplace without being told
+   * the application itself. It chose work suited to one kind of product without ever being told
    * that is what it was, and without its invariants ("the API contract must never change", "a
    * microservice outage must never block user access") or its recorded risks ("assuming models
    * that do not exist causes runtime errors" — which is, in advance, the failure that later removed

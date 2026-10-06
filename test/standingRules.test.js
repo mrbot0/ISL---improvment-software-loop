@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { STANDING_RULES, rulesFor } from '../src/memory/standingRules.js';
+import { DEFAULT_PROJECT } from '../src/config.js';
 
 /**
  * Queste regole esistono perché ISL ha rotto software in produzione con la pipeline al verde.
@@ -12,8 +13,23 @@ import { STANDING_RULES, rulesFor } from '../src/memory/standingRules.js';
 test('nessuna regola nomina il progetto su cui è stata imparata', () => {
   // Una regola scritta come "attenzione a SearchBar.jsx" vale per un file di un repository.
   // ISL ne governa molti, e ciò che si ripete è la forma dell'errore, non il file.
+  /*
+   * Il nome del prodotto NON va scritto qui.
+   *
+   * Questo elenco conteneva il nome del progetto su cui ISL è stato sviluppato, il che rendeva la
+   * guardia inerte altrove: su un altro progetto avrebbe lasciato passare una regola che nomina
+   * quel progetto, cioè esattamente il difetto che deve impedire. Prendendolo dalla configurazione
+   * il controllo vale per il prodotto che ISL sta governando adesso, qualunque sia — più generale
+   * e insieme più severo di prima.
+   */
   const blob = JSON.stringify(STANDING_RULES);
-  for (const leak of [/rentall/i, /SearchBar/, /BecomeLister/, /\.jsx\b/, /prisma/i]) {
+  const specifici = [/SearchBar/, /BecomeLister/, /\.jsx\b/, /prisma/i];
+  const nomeProgetto = String(DEFAULT_PROJECT?.name || '').trim();
+  // Sotto i tre caratteri un nome produce falsi positivi su parole comuni, non segnale.
+  if (nomeProgetto.length >= 3) {
+    specifici.push(new RegExp(nomeProgetto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+  }
+  for (const leak of specifici) {
     assert.equal(leak.test(blob), false, `una regola nomina qualcosa di specifico: ${leak}`);
   }
 });

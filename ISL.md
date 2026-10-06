@@ -5,8 +5,8 @@
 > to land it, writes the code in a throwaway sandbox, grades it against deterministic gates, commits
 > only what passes — and does it again, forever, **learning from every outcome**.
 
-Model-agnostic and language-agnostic. ISL was developed against one codebase — a product called
-RentAll — and that project is only the seeded default of a fresh install (`DEFAULT_PROJECT_NAME` /
+Model-agnostic and language-agnostic. ISL was developed against a single real codebase, and that
+project is only the seeded default of a fresh install (`DEFAULT_PROJECT_NAME` /
 `DEFAULT_PROJECT_PATH`), not a part of ISL. It manages **any** application: point it at a folder
 and it analyses the real layout, detects the languages, and works on them.
 
@@ -627,7 +627,8 @@ Safety properties:
   its coverage provider is not — install it with `npm install -D @vitest/coverage-v8@2.1.9`", pinned
   to the vitest actually present, because the provider is peer-locked to its runner).
 
-The measurement corrects the proxy in **both** directions. On RentAll: `middleware/auth.js` reads
+The measurement corrects the proxy in **both** directions. Measured on a real codebase:
+`middleware/auth.js` reads
 "no tests" statically but is 27.1% covered transitively through route tests, while
 `store/auth.jsx` — critical and sensitive — is **0%: never executed**.
 

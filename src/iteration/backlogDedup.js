@@ -10,8 +10,8 @@ import { listFeatures, setFeatureStatus } from '../db_iteration.js';
  * DESIGN NOTE — we deliberately do NOT use sentence embeddings here. The backlog is full of TEMPLATED
  * titles ("Add unit tests for X", "Fix accessibility issues in Y") that differ only in the filename;
  * an embedding gives two such titles ~0.95 cosine even when X and Y are DIFFERENT files — i.e. it
- * would merge distinct work. (Verified on RentAll: it flagged "…Privacy.jsx" and "…Insurance.jsx" as
- * dupes.) The precise, high-precision signal for a backlog is instead: **same target file + same
+ * would merge distinct work. (Measured on a real backlog: it flagged two pages with unrelated
+ * subjects as duplicates purely because their titles shared a template.) The precise, high-precision signal for a backlog is instead: **same target file + same
  * intent**, with a high-lexical fallback for file-less items. Deterministic and safe.
  */
 
