@@ -122,3 +122,29 @@ failure they catch had already shipped:
 - `test/composeSafety.test.js` — reads `src/runtime/compose.js` and fails if any compose command
   carries `-v` or `--volumes`. That flag deletes the database volume, and unlike everything else
   the runtime can do, it has no undo.
+
+## Licenza
+
+ISL è distribuito sotto **GNU Affero General Public License v3.0**. Il testo completo è in
+[LICENSE](LICENSE).
+
+In breve, e senza che questo sostituisca la licenza: sei libero di usare, studiare, modificare e
+ridistribuire ISL. Se lo modifichi e lo rendi disponibile ad altri — anche soltanto facendolo girare
+come servizio accessibile in rete, senza distribuirne una copia — devi offrire a chi lo usa il codice
+sorgente della tua versione. È la clausola che distingue l'AGPL dalla GPL (sezione 13), ed è
+deliberata: ISL è un piano di controllo che si usa attraverso un'interfaccia web, e senza quella
+clausola chiunque potrebbe offrirlo come servizio chiuso senza restituire nulla.
+
+    ISL — Improvement Software Loop
+    Copyright (C) 2026  mrbot0
+
+    This program is free software: you can redistribute it and/or modify it under the terms of
+    the GNU Affero General Public License as published by the Free Software Foundation, either
+    version 3 of the License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+    without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    See the GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License along with this
+    program. If not, see <https://www.gnu.org/licenses/>.
