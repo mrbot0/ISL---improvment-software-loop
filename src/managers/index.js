@@ -302,9 +302,8 @@ class OperationsManager extends BaseManager {
 
 /* ─────────────────────────── Services (active) ─────────────────────────── */
 // Owns the seams between the microservices. This is the manager the system was
-// missing: nothing else was watching whether identity, listings, messaging,
-// notifications, payments and search actually work TOGETHER — which is where a
-// distributed system really fails.
+// missing: nothing else was watching whether the services a project is split into
+// actually work TOGETHER — which is where a distributed system really fails.
 class ServicesManager extends BaseManager {
   constructor() {
     super('Services', { icon: '🔗', accent: 'cyan', role: 'Microservice integration & contracts' });

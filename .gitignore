@@ -43,3 +43,8 @@ _t*.mjs
 # modelli sostituiti da descrizioni funzionali, metriche di scala rimosse — quindi
 # viene pubblicato: le lezioni tecniche restano integrali, l'architettura privata
 # non e' piu' ricostruibile.
+
+# Strumento one-off legato a un singolo prodotto: cabla una sua pagina e ne contiene
+# il catalogo di stringhe UI in quattro lingue. Non appartiene a un ISL generico.
+# Resta sul disco, fuori dal versionamento.
+tools/i18nLister.mjs

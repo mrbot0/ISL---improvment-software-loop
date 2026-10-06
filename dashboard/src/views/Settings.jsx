@@ -217,7 +217,7 @@ export default function Settings({ orchestrator, iteration, actions, theme, togg
           <button className="btn-ghost" onClick={actions.refetch}>↻ refresh state</button>
           <button className="btn-ghost" onClick={() => api.report().then((r) => {
             const url = URL.createObjectURL(new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' }));
-            const a = document.createElement('a'); a.href = url; a.download = 'rentall-agents-report.json'; a.click(); URL.revokeObjectURL(url);
+            const a = document.createElement('a'); a.href = url; a.download = 'isl-agents-report.json'; a.click(); URL.revokeObjectURL(url);
           })}>⭳ export report</button>
         </div>
       </Section>

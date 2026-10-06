@@ -12,10 +12,10 @@ import { Spinner } from '../components/ui.jsx';
  * any export, no suite covers it, and the service boots perfectly. The failure waits for the first
  * production read.
  *
- * It happened here. A run added `trustScore Int? @default(0)` to the listings service's `User`
- * model — a model documented as a read-only mirror of a table that service does not own — with no
- * migration. Weeks later it surfaced as "business users have disappeared": every `User` read was
- * asking Postgres for a column that has never existed.
+ * It has happened. A run added a scalar field to a model that a service only MIRRORS — a model
+ * documented as a read-only copy of a table that service does not own — with no migration. Weeks
+ * later it surfaced as a whole class of records vanishing from the application: every read of that
+ * model was asking Postgres for a column that had never existed.
  *
  * This panel is READ-ONLY, and deliberately so. It shows the schemas and reports what the integrity
  * agent found; it cannot edit a `.prisma` file or issue a single line of DDL. The database is the

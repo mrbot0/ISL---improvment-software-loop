@@ -17,7 +17,7 @@ const STATE = {
 };
 
 /**
- * Runtime view: boot the RentAll stack under docker compose for either the `main`
+ * Runtime view: boot the target project's stack under docker compose for either the `main`
  * working tree or the work branch, watch the live compose logs, and let the Ops
  * agent auto-heal failures. One target runs at a time (shared ports).
  */

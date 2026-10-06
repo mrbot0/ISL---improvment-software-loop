@@ -21,26 +21,38 @@ import { areasForFiles, briefingFor, briefingSnapshot } from '../src/context/fle
  * whether a change is right. These pin the distribution.
  */
 
+/*
+ * Una fixture INVENTATA, e volutamente ricca.
+ *
+ * Qui c'era il profilo di un prodotto reale: nomi dei servizi, modelli di database, il fornitore di
+ * pagamenti. Pubblicare il repository lo avrebbe reso un documento di architettura di un sistema
+ * privato, incastonato in un test.
+ *
+ * Non basta pero' svuotarla: questi test verificano che il briefing TRASPORTI architettura,
+ * invarianti e rischi fino al planner, e una fixture povera li farebbe passare senza dimostrare
+ * nulla. Quindi e' sostituita da un sistema di prestito bibliotecario altrettanto articolato, che
+ * non esiste da nessuna parte.
+ */
 const PROFILE = {
-  whatItIs: 'A peer-to-peer rental marketplace with payments and trust/safety layers.',
-  objective: 'Let people rent objects and spaces from each other safely.',
+  whatItIs: 'A library lending system with holds, fines and branch transfers.',
+  objective: 'Let members borrow items across branches without losing track of who holds what.',
   stack: ['Node.js', 'React', 'Prisma', 'PostgreSQL'],
   architecture: 'A monolith being split into domain microservices behind a strangler fig.',
   areas: [
     { name: 'backend-monolith', path: 'backend/server', responsibility: 'Core API orchestration and routing' },
-    { name: 'microservices', path: 'services', responsibility: 'Domain logic for identity, listings, payments' },
+    { name: 'microservices', path: 'services', responsibility: 'Domain logic for members, catalogue, circulation' },
     { name: 'frontend', path: 'frontend/app', responsibility: 'React SPA' },
   ],
-  keyFlows: ['Booking & Payments: escrow via Stripe Connect', 'User Authentication: 2FA and passkeys'],
+  keyFlows: ['Holds & Transfers: a queued hold moves an item between branches', 'Member sign-in: library card plus PIN'],
   invariants: [
     'The API contract must never change; consumers must not know which side handles the logic.',
     'Microservice outages must never block user access; fallback to the monolith is mandatory.',
     'Migrations must use prisma migrate deploy; db push is forbidden in production.',
   ],
-  risks: ['Assuming existence of models like ApiKey or Dispute which do not exist, causing runtime errors.'],
+  risks: ['Assuming existence of models like LoanPolicy or Fine which do not exist, causing runtime errors.'],
   glossary: [],
   docHighlights: [],
-  summary: 'A marketplace mid-migration.',
+  summary: 'A lending system mid-migration.',
 };
 
 before(() => {
@@ -55,7 +67,7 @@ beforeEach(() => {
 
 test('the planner is told what the application is', () => {
   const b = briefingFor('planner', { includeSituation: false });
-  assert.match(b, /peer-to-peer rental marketplace/);
+  assert.match(b, /library lending system/);
   assert.match(b, /strangler fig/, 'the architecture matters when choosing where to work');
 });
 
@@ -71,13 +83,13 @@ test('the planner is given the recorded risks', () => {
   // had never been shown it.
   const b = briefingFor('planner', { includeSituation: false });
   assert.match(b, /KNOWN RISKS/);
-  assert.match(b, /models like ApiKey or Dispute which do not exist/);
+  assert.match(b, /models like LoanPolicy or Fine which do not exist/);
 });
 
 test('the reviewer is given the rules for the files in front of it', () => {
-  const b = briefingFor('reviewer', { files: ['services/payments/src/hardening.js'], includeSituation: false });
+  const b = briefingFor('reviewer', { files: ['services/circulation/src/hardening.js'], includeSituation: false });
   assert.match(b, /microservices/, 'the area the diff touches is named');
-  assert.match(b, /Domain logic for identity/, 'with what that area is responsible for');
+  assert.match(b, /Domain logic for members/, 'with what that area is responsible for');
   assert.match(b, /INVARIANTS/);
 });
 
@@ -98,14 +110,14 @@ test('a project with no profile yet contributes nothing rather than failing', ()
 });
 
 test('areasForFiles maps a diff to the parts of the system it touches', () => {
-  const areas = areasForFiles(['services/payments/src/x.js', 'frontend/app/y.jsx'], PROFILE);
+  const areas = areasForFiles(['services/circulation/src/x.js', 'frontend/app/y.jsx'], PROFILE);
   assert.deepEqual(areas.map((a) => a.name).sort(), ['frontend', 'microservices']);
 });
 
 test('the longest matching path wins', () => {
   // `services/...` must resolve to microservices, not to a shorter prefix that also matches.
   const p = { areas: [{ name: 'root', path: '' }, { name: 'microservices', path: 'services' }] };
-  const areas = areasForFiles(['services/payments/src/x.js'], p);
+  const areas = areasForFiles(['services/circulation/src/x.js'], p);
   assert.equal(areas[0]?.name, 'microservices');
 });
 

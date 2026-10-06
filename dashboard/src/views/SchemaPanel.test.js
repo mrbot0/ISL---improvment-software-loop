@@ -3,17 +3,20 @@ import { schemaLabel } from './SchemaPanel.jsx';
 
 /**
  * The schema list exists to let an operator pick between schemas. Labelling them by the last two
- * path segments gave `prisma/schema.prisma` for identity, listings, messaging, notifications,
- * payments and search — six entries, one name, in the one list whose purpose is telling them apart.
+ * path segments gave every service the same `prisma/schema.prisma` — one name repeated down the
+ * one list whose entire purpose is telling them apart.
+ *
+ * The service names below are invented: the bug is about the shape of a path, not about any
+ * particular product's topology.
  */
 describe('schemaLabel', () => {
   it('names the service, which is what differs', () => {
-    expect(schemaLabel('services/listings/prisma/schema.prisma')).toBe('listings');
-    expect(schemaLabel('services/payments/prisma/schema.prisma')).toBe('payments');
+    expect(schemaLabel('services/catalogue/prisma/schema.prisma')).toBe('catalogue');
+    expect(schemaLabel('services/billing/prisma/schema.prisma')).toBe('billing');
   });
 
   it('gives every service schema a distinct label', () => {
-    const paths = ['identity', 'listings', 'messaging', 'notifications', 'payments', 'search']
+    const paths = ['accounts', 'catalogue', 'inbox', 'alerts', 'billing', 'lookup']
       .map((s) => `services/${s}/prisma/schema.prisma`);
     expect(new Set(paths.map(schemaLabel)).size).toBe(paths.length);
   });

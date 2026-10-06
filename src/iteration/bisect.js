@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { WORK_BRANCH, PRODUCT_DIRS } from '../config.js';
+import { WORK_BRANCH, PRODUCT_DIRS, AGENT_IDENTITY } from '../config.js';
 import { git, createSandbox, removeWorktree, moveBranch, run } from '../sandbox/worktree.js';
 import { testCommandFor } from './langRunners.js';
 import { log } from '../logger.js';
@@ -177,7 +177,7 @@ export function revertCommit({ branch = WORK_BRANCH, sha } = {}) {
   const dir = createSandbox([], branch); // worktree at the branch tip
   try {
     try {
-      git(['-c', 'user.name=ISL Agents', '-c', 'user.email=agents@isl.local', 'revert', '--no-edit', sha], dir);
+      git(['-c', `user.name=${AGENT_IDENTITY.name}`, '-c', `user.email=${AGENT_IDENTITY.email}`, 'revert', '--no-edit', sha], dir);
     } catch (e) {
       try { git(['revert', '--abort'], dir); } catch { /* nothing to abort */ }
       return { ok: false, reason: `revert did not apply cleanly: ${String(e.message).split('\n')[0]}` };

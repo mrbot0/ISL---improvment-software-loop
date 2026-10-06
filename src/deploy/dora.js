@@ -1,6 +1,6 @@
 import { db, registerSchema, getSetting, setSetting } from '../db.js';
 import { git } from '../sandbox/worktree.js';
-import { iteration as cfg } from '../config.js';
+import { iteration as cfg, AGENT_IDENTITY } from '../config.js';
 import { emit } from '../bus.js';
 import { log } from '../logger.js';
 import { notifyOnce } from '../db_iteration.js';
@@ -111,7 +111,17 @@ export const setAutoRevertEnabled = (on) => setSetting('doraAutoRevert', !!on);
  * empty would SILENTLY disable the trust and memory feedback on a breach, which is the entire point
  * of the guardrail. That is why `parseAgents` is tested against the real message shape.
  */
-const ISL_TRAILER = /Co-Authored-By:\s*ISL Agents/i;
+/*
+ * COSTRUITO DALL'IDENTITÀ, NON SCRITTO A MANO.
+ *
+ * Questo è il riconoscitore: decide quali commit contano come deployment di ISL. Tenerlo come
+ * stringa fissa mentre chi FIRMA i commit (apply.js, worktree.js) legge `AGENT_IDENTITY` produce un
+ * guasto che non si vede: un operatore imposta ISL_GIT_AUTHOR_NAME, i commit continuano ad
+ * arrivare, e da quel momento nessuno viene più riconosciuto — le metriche DORA scendono verso zero
+ * senza che nulla fallisca. Un numero sbagliato che sembra giusto è peggio di un errore.
+ */
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const ISL_TRAILER = new RegExp(`Co-Authored-By:\\s*${escapeRe(AGENT_IDENTITY.name)}`, 'i');
 const RUN_SUBJECT = /\[ai-iter#(\d+)\]/i;
 const PROVENANCE_AGENTS = /·\s*agents\s+(.+?)\s*·/i;
 
