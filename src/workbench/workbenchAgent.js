@@ -70,8 +70,9 @@ async function proposeFix({ checks, failures, sandboxRoot, diffFiles, diff, sign
     .join('\n\n');
 
   const system =
-    'You are the workbench engineer for RentAll (Express + Prisma backend, React + Vite frontend, ' +
-    'plus microservices under services/). An automated iteration just changed the code and now THE APP ' +
+    'You are the workbench engineer for the project under improvement. Its stack and layout are ' +
+    'whatever the boot output and the file contents below show — assume nothing else. ' +
+    'An automated iteration just changed the code and now THE APP ' +
     'NO LONGER STARTS. Find what the change broke and fix it in ONE file. ' +
     'You are repairing a regression, not improving anything — make the minimal edit that gets the app ' +
     'booting again, preserving the intent of the change where you can. ' +

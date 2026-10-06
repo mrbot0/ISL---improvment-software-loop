@@ -9,13 +9,13 @@ import { emit } from '../bus.js';
 import { log } from '../logger.js';
 
 /**
- * Runs the RentAll app locally via docker compose, for one of two targets:
+ * Runs the target project's app locally via docker compose, for one of two targets:
  *   - 'main' → the working tree (REPO_ROOT), current code.
  *   - 'work' → a persistent git worktree checked out at the work branch tip, so
  *              you can boot exactly what the agents have committed.
  *
- * The compose pins container names + host ports (5432/6379/4000/5173), so only
- * ONE target can run at a time — switching always tears the other down first.
+ * A compose file pins container names and host ports, so only ONE target can run
+ * at a time — switching always tears the other down first.
  */
 
 const WORK_BRANCH = iterCfg.workBranch;

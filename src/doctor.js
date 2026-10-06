@@ -11,7 +11,7 @@ const record = (name, ok, detail) => {
   console.log(`${ok ? '  ok  ' : ' FAIL '} ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
-console.log('\nRentAll Agents — preflight\n');
+console.log('\nISL — preflight\n');
 
 // 1. Node
 const [major] = process.versions.node.split('.').map(Number);

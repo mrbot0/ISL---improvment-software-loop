@@ -14,10 +14,11 @@ const int = (v, dflt) => (v === undefined || v === '' ? dflt : Number.parseInt(v
 /* ═══════════════════════════════════════════════════════════════════════════
  * ISL — Improvement Software Loop
  *
- * A multi-project evolution of the RentAll agent control plane. The single
- * biggest architectural change from the original is that NOTHING about the code
- * being improved is a boot-time constant any more. The original detected one
- * repo root, one base branch and one product layout at import and baked them in.
+ * A multi-project evolution of the single-project agent control plane it grew out
+ * of. The single biggest architectural change from the original is that NOTHING
+ * about the code being improved is a boot-time constant any more. The original
+ * detected one repo root, one base branch and one product layout at import and
+ * baked them in.
  *
  * Here, every one of those is a property of the *active project* and is resolved
  * on demand. `setActiveProjectConfig(project)` reassigns the exported live
@@ -114,14 +115,26 @@ export const autonomy = {
 
 /**
  * Default code folder for the very first project seeded on a fresh install.
- * Per the product brief, ISL "starts from this project": the RentAll codebase
- * the original agents were built to improve.
+ * ISL improves OTHER codebases, so it cannot assume which one: unless
+ * DEFAULT_PROJECT_PATH names a folder, the seeded project points at the
+ * directory ISL was started from, and the operator repoints it from the
+ * dashboard. A hardcoded path here seeded a project that does not exist on any
+ * machine but the one it was written on.
  */
+const defaultProjectPath = path.resolve(process.env.DEFAULT_PROJECT_PATH || process.cwd());
 export const DEFAULT_PROJECT = {
-  name: process.env.DEFAULT_PROJECT_NAME || 'RentAll',
-  codePath:
-    process.env.DEFAULT_PROJECT_PATH ||
-    path.join(os.homedir(), 'Documents', 'ENV', 'BP', '8_7_2026', 'RentALL'),
+  name: process.env.DEFAULT_PROJECT_NAME || path.basename(defaultProjectPath) || 'Default project',
+  codePath: defaultProjectPath,
+};
+
+/**
+ * Git identity ISL commits with INSIDE the project it improves. It must not name
+ * the product ISL was first built against: those commits land in someone else's
+ * history. Overridable so an operator can attribute them however they wish.
+ */
+export const AGENT_IDENTITY = {
+  name: process.env.ISL_GIT_AUTHOR_NAME || 'ISL Agents',
+  email: process.env.ISL_GIT_AUTHOR_EMAIL || 'agents@isl.local',
 };
 
 /* -------------------------- resolution primitives ------------------------- */

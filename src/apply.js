@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { REPO_ROOT, WORKTREE_DIR, autonomy } from './config.js';
+import { AGENT_IDENTITY, REPO_ROOT, WORKTREE_DIR, autonomy } from './config.js';
 import { emit } from './bus.js';
 import { getProposal, getSetting, setProposalStatus } from './db.js';
 import { git, headCommit, removeWorktree } from './sandbox/worktree.js';
@@ -72,7 +72,7 @@ function applyOnBranch(p) {
       '',
       `Proposed by the ${p.agentId} agent (proposal #${p.id}), verified against the test suite.`,
       '',
-      'Co-Authored-By: RentAll Agents <agents@rentall.local>',
+      `Co-Authored-By: ${AGENT_IDENTITY.name} <${AGENT_IDENTITY.email}>`,
     ].join('\n');
     git(['commit', '--quiet', '-m', body], dir);
   } catch (err) {

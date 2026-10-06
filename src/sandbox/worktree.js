@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BASE_BRANCH, PRODUCT_DIRS, REPO_ROOT, WORKTREE_DIR } from '../config.js';
+import { AGENT_IDENTITY, BASE_BRANCH, PRODUCT_DIRS, REPO_ROOT, WORKTREE_DIR } from '../config.js';
 
 export function git(args, cwd = REPO_ROOT) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -263,7 +263,7 @@ export function applyDiff(dir, diff) {
 
 /** Commit the already-staged changes in a worktree. Returns the new SHA. */
 export function commitStaged(dir, message) {
-  git(['-c', 'user.name=RentAll Agents', '-c', 'user.email=agents@rentall.local', 'commit', '--quiet', '-m', message], dir);
+  git(['-c', `user.name=${AGENT_IDENTITY.name}`, '-c', `user.email=${AGENT_IDENTITY.email}`, 'commit', '--quiet', '-m', message], dir);
   return git(['rev-parse', 'HEAD'], dir);
 }
 

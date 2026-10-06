@@ -21,7 +21,7 @@ const MAX_LOG_LINES = 500;
 const MAX_HEAL_ATTEMPTS = 3;
 
 /**
- * Runs the RentAll stack for one selected target (main | work), streams its logs,
+ * Runs the target project's stack for one selected target (main | work), streams its logs,
  * and — when auto-heal is on — lets the Ops agent diagnose failures, apply a fix,
  * and restart, up to a bounded number of attempts.
  */
