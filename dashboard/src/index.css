@@ -1,0 +1,368 @@
+/* The RentAll type system. Falls back to system fonts when offline — the app is a
+   local tool and must not depend on the network to be legible. */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Theme channels — space-separated RGB so Tailwind's /alpha opacity works.
+ * Dark is the default; [data-theme="light"] remaps the same tokens.
+ *
+ * The brand red (#C8102E) is the product's own, and it is used the way a brand
+ * colour should be in an operations console: for the primary action and the live
+ * identity, not for danger. Status keeps its conventional palette — emerald for
+ * healthy, rose for broken — because an operator reads those in a glance and we do
+ * not get to redefine what red means on a dashboard just to be on-brand.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --brand: 200 16 46; /* #C8102E */
+  --brand-light: 218 31 56; /* #DA1F38 */
+  --brand-dark: 156 11 35; /* #9C0B23 */
+  --brand-muted: 120 30 48;
+  --cream: 245 233 207; /* #F5E9CF */
+  --ink-950: 12 13 18;
+  --ink-900: 18 20 27;
+  --ink-850: 23 26 35;
+  --ink-800: 30 34 45;
+  --ink-700: 42 48 62;
+  --ink-600: 58 66 84;
+  --ink-500: 80 90 110;
+  --slate-200: 228 232 240;
+  --slate-300: 203 212 226;
+  --slate-400: 148 162 184;
+  --slate-500: 104 118 141;
+  --slate-600: 74 87 108;
+  --slate-700: 54 66 85;
+  --content-strong: 255 255 255;
+  --shadow: 0 0 0;
+
+  /*
+   * ELEVATION SCALE.
+   *
+   * There was one shadow in the whole stylesheet (light mode only), so every surface sat at the
+   * same visual depth and the eye had nothing to order the page by. A dashboard with thirty panels
+   * needs a hierarchy of surfaces, not thirty identical rectangles.
+   *
+   * Dark mode leans on a lifted border and an inner highlight rather than a drop shadow — a shadow
+   * against a near-black background is invisible, which is why a flat dark UI so often reads as
+   * cheap. The 1px inset top highlight is what makes a dark surface look like a panel catching
+   * light from above.
+   */
+  --elev-1: 0 1px 2px rgb(var(--shadow) / 0.30);
+  --elev-2: 0 4px 12px -2px rgb(var(--shadow) / 0.34);
+  --elev-3: 0 12px 32px -8px rgb(var(--shadow) / 0.45);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --brand: 200 16 46;
+  --brand-light: 218 31 56;
+  --brand-dark: 156 11 35;
+  --brand-muted: 236 200 208;
+  --cream: 245 233 207;
+  --ink-950: 247 245 240; /* page bg — a whisper of the brand cream */
+  --ink-900: 255 255 255; /* cards */
+  --ink-850: 250 248 244;
+  --ink-800: 240 237 231; /* hover / chips */
+  --ink-700: 219 214 205; /* borders */
+  --ink-600: 184 178 168;
+  --ink-500: 124 118 108;
+  --slate-200: 26 31 46; /* strongest text — brand ink */
+  --slate-300: 42 49 68;
+  --slate-400: 82 92 110;
+  --slate-500: 108 118 136;
+  --slate-600: 138 146 160;
+  --slate-700: 180 186 196;
+  --content-strong: 26 31 46;
+  --shadow: 26 31 46;
+  /* Light mode carries real shadows, so they are softer in spread but more present in opacity. */
+  --elev-1: 0 1px 2px rgb(var(--shadow) / 0.06), 0 1px 1px rgb(var(--shadow) / 0.04);
+  --elev-2: 0 4px 12px -2px rgb(var(--shadow) / 0.10), 0 2px 4px -2px rgb(var(--shadow) / 0.06);
+  --elev-3: 0 12px 32px -8px rgb(var(--shadow) / 0.14), 0 4px 8px -4px rgb(var(--shadow) / 0.08);
+}
+
+@layer base {
+  body {
+    font-feature-settings: 'cv02', 'cv03', 'cv04';
+    @apply font-sans;
+  }
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--ink-700));
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-600));
+  }
+  /*
+   * KEYBOARD FOCUS.
+   *
+   * A 1px offset put the ring hard against the control, so on a dense dark panel it read as a
+   * slightly thicker border rather than as focus. Two pixels of offset plus a dark halo separates
+   * the ring from whatever it surrounds — which is the whole job of a focus ring, and the
+   * difference between "accessible on paper" and "an operator can actually see where they are".
+   */
+  /* The fallback, for anything the component-layer rule below does not name: <summary>, custom
+     widgets, anything carrying a bare tabindex. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand-light));
+    outline-offset: 2px;
+    border-radius: inherit;
+  }
+  /* A focused control must never be hidden behind a sticky header when tabbed to. */
+  :where(a, button, input, select, textarea, [tabindex]) {
+    scroll-margin-block: 5rem;
+  }
+
+  /*
+   * NUMBERS THAT DO NOT JITTER.
+   *
+   * Every live figure on this dashboard changes while you watch it. With proportional digits a
+   * count going 9 → 10 nudges everything after it, and a column of scores never lines up — the
+   * single most common reason a data-dense UI feels amateur. Applied to the elements that actually
+   * hold figures rather than globally, so prose keeps its proper typography.
+   */
+  th, td, code, kbd, samp, time, .font-mono, [class*='tabular'] {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Respect users who ask for less motion — kill animations and transitions. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  /* Skip-to-content link: hidden until focused, then visible for keyboard users. */
+  .skip-link {
+    position: absolute;
+    left: 0.5rem;
+    top: -3rem;
+    z-index: 100;
+    border-radius: 0.5rem;
+    background: rgb(var(--brand));
+    padding: 0.5rem 0.75rem;
+    color: white;
+    font-size: 12px;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus {
+    top: 0.5rem;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-700/70 bg-ink-900/60 backdrop-blur;
+    box-shadow: var(--elev-1), inset 0 1px 0 rgb(255 255 255 / 0.04);
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  }
+  /* A subtle lift on hover reads as "this panel is alive" across every page. */
+  .card:hover {
+    @apply border-ink-600/70;
+    box-shadow: var(--elev-2), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
+  :root[data-theme='light'] .card {
+    @apply bg-ink-900;
+    box-shadow: var(--elev-1);
+  }
+  :root[data-theme='light'] .card:hover {
+    box-shadow: var(--elev-2);
+  }
+  /* The consistent page header every view can use: title + one-line context. */
+  .page-title {
+    @apply text-lg font-semibold text-white;
+  }
+  .page-sub {
+    @apply text-[12px] text-slate-500;
+  }
+  /* The section header every enterprise panel shares. */
+  .card-head {
+    @apply flex items-center gap-2 border-b border-ink-700/70 px-3 py-2;
+  }
+  /* Now rendered as a real <h2>/<h3> (see CardHead) so panels are navigable by heading. The margin
+     reset keeps it looking exactly as it did when it was a <span>. */
+  .card-title {
+    @apply m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400;
+  }
+  /*
+   * CONTROLS.
+   *
+   * `transition-colors` alone meant a button changed hue and nothing else — no depth, no press. The
+   * additions are deliberately small: a control that moves more than a pixel reads as a toy, and a
+   * control that does not move at all reads as an image of a button.
+   *
+   * The active state is `translate-y-px` rather than a scale, because scaling a button inside a
+   * dense table row nudges its neighbours; a one-pixel drop is felt and costs no layout.
+   */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium
+           disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+                box-shadow 0.15s ease, transform 0.08s ease;
+  }
+  .btn:not(:disabled) {
+    cursor: pointer;
+  }
+  .btn:not(:disabled):active {
+    transform: translateY(1px);
+  }
+  .btn-ghost {
+    @apply btn border border-ink-700 text-slate-300 hover:border-ink-600 hover:bg-ink-800 hover:text-white;
+  }
+  /* Brand red is the primary action — the one thing on the page that is RentAll's. */
+  .btn-primary {
+    @apply btn bg-brand text-white hover:bg-brand-light;
+    box-shadow: var(--elev-1), inset 0 1px 0 rgb(255 255 255 / 0.14);
+  }
+  .btn-primary:not(:disabled):hover {
+    box-shadow: var(--elev-2), inset 0 1px 0 rgb(255 255 255 / 0.18);
+  }
+  .btn-danger {
+    @apply btn border border-rose-800/70 text-rose-300 hover:border-rose-700 hover:bg-rose-950/60;
+  }
+  /*
+   * A pill is a status, so it should read as a chip on the surface rather than as coloured text.
+   * The hairline is what does it — 10% of its own colour, which works on any of the twenty tints
+   * these are used with and needs no per-status rule.
+   */
+  .pill {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase;
+    letter-spacing: 0.045em;
+    /* A hairline derived from the pill's OWN text colour, so one rule serves all twenty status
+       tints without a per-status override. `currentColor` at low alpha is what makes each chip
+       sit on the surface instead of floating as tinted text. */
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+  }
+  @supports not (color: color-mix(in srgb, red 50%, transparent)) {
+    /* Older engines cannot derive an alpha from currentColor; a neutral hairline is the fallback. */
+    .pill { box-shadow: inset 0 0 0 1px rgb(var(--ink-600) / 0.35); }
+  }
+  .input {
+    @apply w-full rounded-lg border border-ink-700 bg-ink-950/70 px-3 py-2 text-sm text-slate-200
+           placeholder:text-slate-600 focus:border-brand/60 focus:outline-none;
+  }
+  /* A numeric KPI, the way a console should show one. */
+  .stat {
+    @apply font-display text-2xl leading-none tracking-wide text-white;
+    /* Tabular figures: a KPI that ticks 9 → 10 must not shove the label sideways. Proportional
+       digits are why live dashboards visibly twitch. */
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label {
+    @apply text-[10px] uppercase tracking-[0.1em] text-slate-500;
+  }
+  /* Loading skeleton shimmer. */
+  .skeleton {
+    @apply rounded bg-ink-800;
+    background-image: linear-gradient(90deg, transparent, rgb(var(--ink-700) / 0.6), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+  }
+
+  /* ── professional polish ──────────────────────────────────────────────────
+     The details that separate a console someone tolerates from one they trust:
+     a visible focus ring for keyboard users, honest disabled states, dense data
+     tables, and a secondary action that doesn't shout. */
+
+  /*
+   * One focus treatment for the whole app — keyboard users always know where they are,
+   * mouse users never see a stray ring.
+   *
+   * This rule, NOT the `:focus-visible` in @layer base, is the one that lands on real controls:
+   * cascade layers are decided before specificity, so components beats base no matter how the
+   * selectors compare. Improving the base rule alone changed nothing on any button or input.
+   *
+   * The separation is an outline offset rather than a ring-offset colour: the gap shows whatever is
+   * actually behind the control, so it stays correct in both themes instead of painting a dark halo
+   * onto a white panel.
+   */
+  .btn:focus-visible,
+  .input:focus-visible,
+  a:focus-visible,
+  [role='button']:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid rgb(var(--brand-light));
+    outline-offset: 2px;
+  }
+
+  /* A quieter primary: the affirmative action on a panel that already has one. */
+  .btn-secondary {
+    @apply btn border border-brand/40 bg-brand/10 text-brand-light hover:bg-brand/20;
+  }
+  /* Success/positive confirmation (approve, verify, promote). */
+  .btn-success {
+    @apply btn border border-emerald-700/60 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20;
+  }
+
+  /* Dense, scannable data table — the enterprise workhorse. */
+  .table {
+    @apply w-full border-collapse text-[12px];
+  }
+  .table thead th {
+    @apply sticky top-0 z-10 border-b border-ink-700/70 bg-ink-900/95 px-3 py-2 text-left text-[10px]
+           font-semibold uppercase tracking-[0.08em] text-slate-500 backdrop-blur;
+  }
+  .table tbody td {
+    @apply border-b border-ink-800/60 px-3 py-2 text-slate-300;
+  }
+  .table tbody tr:hover td {
+    @apply bg-ink-800/40;
+  }
+  /* Right-align numbers and give them tabular figures so columns line up. */
+  .table .num,
+  .num {
+    @apply text-right tabular-nums;
+  }
+
+  /* Compact mode: the same layout at higher information density, for big screens. */
+  :root[data-density='compact'] .card-head { @apply py-1.5; }
+  :root[data-density='compact'] .table tbody td { @apply py-1; }
+  :root[data-density='compact'] .stat { @apply text-xl; }
+
+  /* Inline status dot — smaller and calmer than a pill when it's just a state. */
+  .dot {
+    @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full;
+  }
+
+  /* A keyboard hint, used in the palette and tooltips. */
+  kbd {
+    @apply rounded border border-ink-700 bg-ink-800 px-1 font-mono text-[10px] text-slate-400;
+  }
+
+  /* Respect the OS "reduce motion" preference — accessibility, not decoration. */
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Unified-diff colouring, kept close to what git itself renders. */
+.diff-add {
+  @apply bg-emerald-500/10 text-emerald-300;
+}
+.diff-del {
+  @apply bg-rose-500/10 text-rose-300;
+}
+.diff-hunk {
+  @apply bg-sky-500/10 text-sky-300;
+}
+.diff-meta {
+  @apply text-slate-500;
+}
+:root[data-theme='light'] .diff-add { @apply bg-emerald-500/15 text-emerald-700; }
+:root[data-theme='light'] .diff-del { @apply bg-rose-500/15 text-rose-700; }
+:root[data-theme='light'] .diff-hunk { @apply bg-sky-500/15 text-sky-700; }

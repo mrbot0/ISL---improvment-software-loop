@@ -1,0 +1,32 @@
+{
+  "name": "isl-improvement-loop",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ISL — Improvement Software Loop: multi-project autonomous code-improvement control plane (agents, managers, context & reliability) with auth and an enterprise dashboard",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "serve": "node supervisor.mjs",
+    "dev": "node --watch src/server.js",
+    "dashboard": "npm --prefix dashboard run dev",
+    "dashboard:build": "npm --prefix dashboard run build",
+    "setup": "npm install && npm --prefix dashboard install",
+    "doctor": "node src/doctor.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:all": "node --test \"test/*.test.js\" && npm --prefix dashboard test -- --run",
+    "pdf": "node tools/pdf/build.mjs",
+    "check:routes": "node tools/routeCheck.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "diff": "^7.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "ws": "^8.18.0"
+  }
+}
