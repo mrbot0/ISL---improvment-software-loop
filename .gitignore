@@ -37,8 +37,14 @@ New Text Document.txt
 # Script di debug estemporanei
 _t*.mjs
 
-# Diario interno dei miglioramenti: 147 KB che includono il post-mortem di un
-# disservizio su RentALL — nomi dei servizi, topologia, conteggio delle rotte.
-# Escluso da questa prima pubblicazione perche' non pubblicare si puo' annullare,
-# pubblicare su un repo pubblico no. Per includerlo: togli questa riga e committa.
-ISL_IMPROVE.MD
+# Diario interno dei miglioramenti: era escluso perche' il post-mortem di un
+# disservizio nominava i servizi, la topologia e il conteggio delle rotte di un
+# prodotto privato. Ora e' anonimizzato — nome del prodotto, servizi, componenti e
+# modelli sostituiti da descrizioni funzionali, metriche di scala rimosse — quindi
+# viene pubblicato: le lezioni tecniche restano integrali, l'architettura privata
+# non e' piu' ricostruibile.
+
+# Strumento one-off legato a un singolo prodotto: cabla una sua pagina e ne contiene
+# il catalogo di stringhe UI in quattro lingue. Non appartiene a un ISL generico.
+# Resta sul disco, fuori dal versionamento.
+tools/i18nLister.mjs

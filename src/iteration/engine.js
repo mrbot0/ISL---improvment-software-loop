@@ -1,4 +1,4 @@
-import { iteration as cfg, ollama as ollamaCfg } from '../config.js';
+import { iteration as cfg, ollama as ollamaCfg, AGENT_IDENTITY } from '../config.js';
 import { emit } from '../bus.js';
 import { log } from '../logger.js';
 import {
@@ -714,7 +714,7 @@ export async function runIteration({ trigger = 'loop', signal, resume = null } =
         `reg ${scores.regression ?? '—'} · test ${scores.test ?? '—'} · workbench ${scores.workbench ?? '—'})\n` +
         `${diffInfo.files.length} file(s) changed across ${batchPlan.tasks.length} task(s).\n\n` +
         `${provenance}\n\n` +
-        `Generated autonomously by ISL. Co-Authored-By: ISL Agents <agents@isl.local>`;
+        `Generated autonomously by ISL. Co-Authored-By: ${AGENT_IDENTITY.name} <${AGENT_IDENTITY.email}>`;
       // IDEMPOTENCY (ISL_IMPROVE "durable queue", the at-least-once half). A replayed run must
       // never produce a second commit. `assertNotAlreadyCommitted` refuses if this iteration's work
       // is already on the branch — see idempotency.js for why the check is time-scoped.

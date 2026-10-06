@@ -5,9 +5,10 @@
 > to land it, writes the code in a throwaway sandbox, grades it against deterministic gates, commits
 > only what passes — and does it again, forever, **learning from every outcome**.
 
-Model-agnostic and language-agnostic. It ships pointed at a first project (RentAll) but manages
-**any** application: point it at a folder and it analyses the real layout, detects the languages,
-and works on them.
+Model-agnostic and language-agnostic. ISL was developed against one codebase — a product called
+RentAll — and that project is only the seeded default of a fresh install (`DEFAULT_PROJECT_NAME` /
+`DEFAULT_PROJECT_PATH`), not a part of ISL. It manages **any** application: point it at a folder
+and it analyses the real layout, detects the languages, and works on them.
 
 **Scale, as of 2026-07-26:** 114 backend modules (~24,600 lines), 36 dashboard views and 26
 components (~12,600 lines), 201 HTTP endpoints, 43 database tables, 13 improvement agents,
@@ -1100,7 +1101,7 @@ Environment (`.env`), all optional:
 | `ADMIN_EMAIL` | — | Seed admin; first login claims it |
 | `AUTH_SECRET` | dev value | Session secret — **set this in production** |
 | `SESSION_TTL_HOURS` | `168` | Session lifetime |
-| `DEFAULT_PROJECT_PATH` | RentAll path | Folder for the first seeded project |
+| `DEFAULT_PROJECT_PATH` | — | Folder for the first seeded project — the codebase ISL starts from. No portable default: set it on a fresh install. |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Local model host |
 | `OLLAMA_MODEL` | `qwen3.6:latest` | Default model |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embeddings; empty disables vectors |

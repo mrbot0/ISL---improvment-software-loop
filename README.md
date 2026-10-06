@@ -98,7 +98,7 @@ npm run dashboard      # vite dev server
 | `ADMIN_EMAIL` | `admin@example.com` | Seeded admin account |
 | `AUTH_SECRET` | dev secret | Session cookie secret — set in production |
 | `SESSION_TTL_HOURS` | `168` | Session lifetime |
-| `DEFAULT_PROJECT_PATH` | RentAll repo | Code folder for the seeded first project |
+| `DEFAULT_PROJECT_PATH` | — | Code folder for the seeded first project — point it at the codebase you want ISL to start from. There is no portable default: set it on a fresh install. |
 | `OLLAMA_HOST` / `OLLAMA_MODEL` | `127.0.0.1:11434` / `qwen3.6:latest` | LLM backend |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model for the knowledge index's vector search (empty = lexical-only). `ollama pull nomic-embed-text` to enable. |
 | `ISL_MEM_LIMIT_MB` | `1400` | RSS at which the memory watchdog restarts the server cleanly |

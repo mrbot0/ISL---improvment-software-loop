@@ -47,8 +47,9 @@ export async function runAgent(agent, { trigger = 'loop', instruction = null, si
       log.info(agent.id, 'requesting red-team critique of draft', { agentId: agent.id, runId });
       const { text } = await llmText({
         system:
-          'You are a rigorous senior reviewer red-teaming a proposed code change to RentAll ' +
-          '(Express + Prisma backend, React frontend). Find real problems only — do not nitpick style. ' +
+          'You are a rigorous senior reviewer red-teaming a proposed code change to the project ' +
+          'under improvement. Judge it against the code in the diff and the conventions it shows — ' +
+          'assume no particular stack. Find real problems only — do not nitpick style. ' +
           'Check, in order: (1) correctness bugs, (2) does it break any caller/route/export, ' +
           '(3) does it match existing conventions, (4) is it over-reaching beyond its stated goal, ' +
           '(5) security. Reply with a short numbered list of concrete concerns, most serious first. ' +

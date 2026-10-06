@@ -12,13 +12,13 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // The RentAll type system: Bebas for the display voice, Plus Jakarta for UI.
+        // The type system: Bebas for the display voice, Plus Jakarta for UI.
         display: ['"Bebas Neue"', 'Impact', 'system-ui', 'sans-serif'],
         sans: ['"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
       },
       colors: {
-        // RentAll brand — the same red the product ships with.
+        // The console's own brand accent — the colour the ISL mark in Logo.jsx is drawn in.
         brand: {
           DEFAULT: v('brand'),
           light: v('brand-light'),

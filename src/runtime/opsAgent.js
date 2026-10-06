@@ -59,8 +59,9 @@ export async function diagnoseAndFix({ target, targetRoot, logs, signal }) {
     .join('\n\n');
 
   const system =
-    'You are a DevOps engineer for RentAll (Express + Prisma backend, React + Vite frontend), ' +
-    'running under docker compose. A container failed or logged a hard error. Diagnose the root ' +
+    'You are a DevOps engineer for the project under improvement, running under docker compose. ' +
+    'Its stack is whatever the logs and files below show — assume nothing else. ' +
+    'A container failed or logged a hard error. Diagnose the root ' +
     'cause and, if it is a code/config problem you can safely fix in ONE file, return the fix. ' +
     'Only edit application source or compose/Docker config — never .env, lockfiles or node_modules. ' +
     'Return ONLY JSON: {"diagnosis": string, "fixable": boolean, "path": string, "new_content": string, "summary": string}. ' +

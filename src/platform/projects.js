@@ -95,9 +95,10 @@ export function archiveProject(id) {
 
 /**
  * Ensure at least one project exists. On a fresh install we seed the default
- * project pointing at the code folder ISL "starts from" (the RentAll repo). If
- * that folder is missing we still create the row — the operator can repoint it —
- * so the app always boots with a selectable project.
+ * project pointing at DEFAULT_PROJECT.codePath (see config.js: the folder named
+ * by DEFAULT_PROJECT_PATH, otherwise the directory ISL was started from). If that
+ * folder is missing we still create the row — the operator can repoint it — so the
+ * app always boots with a selectable project.
  */
 export function ensureDefaultProject() {
   const existing = listProjects({ includeArchived: true });

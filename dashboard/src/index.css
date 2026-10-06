@@ -1,4 +1,4 @@
-/* The RentAll type system. Falls back to system fonts when offline — the app is a
+/* The type system. Falls back to system fonts when offline — the app is a
    local tool and must not depend on the network to be legible. */
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -10,11 +10,12 @@
  * Theme channels — space-separated RGB so Tailwind's /alpha opacity works.
  * Dark is the default; [data-theme="light"] remaps the same tokens.
  *
- * The brand red (#C8102E) is the product's own, and it is used the way a brand
- * colour should be in an operations console: for the primary action and the live
- * identity, not for danger. Status keeps its conventional palette — emerald for
- * healthy, rose for broken — because an operator reads those in a glance and we do
- * not get to redefine what red means on a dashboard just to be on-brand.
+ * The brand red (#C8102E) is this console's own — the colour the ISL mark is drawn in —
+ * and it is used the way a brand colour should be in an operations console: for the
+ * primary action and the live identity, not for danger. Status keeps its conventional
+ * palette — emerald for healthy, rose for broken — because an operator reads those in
+ * a glance and we do not get to redefine what red means on a dashboard just to be
+ * on-brand.
  */
 :root,
 :root[data-theme='dark'] {
@@ -221,7 +222,7 @@
   .btn-ghost {
     @apply btn border border-ink-700 text-slate-300 hover:border-ink-600 hover:bg-ink-800 hover:text-white;
   }
-  /* Brand red is the primary action — the one thing on the page that is RentAll's. */
+  /* Brand red is the primary action — the one thing on the page that is the brand. */
   .btn-primary {
     @apply btn bg-brand text-white hover:bg-brand-light;
     box-shadow: var(--elev-1), inset 0 1px 0 rgb(255 255 255 / 0.14);

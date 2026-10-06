@@ -85,7 +85,7 @@ export function useHashRoute(fallback) {
 
 /** Apply a theme to <html> and persist it. */
 export function useTheme() {
-  const [theme, setTheme] = useLocalStorage('rentall.theme', 'dark');
+  const [theme, setTheme] = useLocalStorage('isl.theme', 'dark');
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
