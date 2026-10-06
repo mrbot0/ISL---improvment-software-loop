@@ -166,8 +166,8 @@ export async function survey({ maxNew = 12, signal, logger = lg } = {}) {
   /*
    * Il nome del progetto NON va cablato qui.
    *
-   * Questo prompt diceva "a codebase review of RentAll": vero per il progetto su cui è stato
-   * scritto, falso per ogni altro che ISL governa. Un proponente convinto di guardare un altro
+   * Questo prompt nominava un prodotto preciso: vero per il progetto su cui è stato scritto,
+   * falso per ogni altro che ISL governa. Un proponente convinto di guardare un altro
    * prodotto propone lavoro per quel prodotto — ed è lo stesso difetto che era già stato corretto
    * nel planner e qui era rimasto.
    */

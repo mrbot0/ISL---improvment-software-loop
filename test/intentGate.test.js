@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { checkIntentPreserved, countInDiff, namedIdentifiers, reviewFloorVeto } from '../src/iteration/intentGate.js';
 
 /**
- * THE RUN THAT BROKE RENTALL'S SEARCH BAR.
+ * THE RUN THAT BROKE A LIVE SEARCH BAR.
  *
  * Iteration #426 carried the task "Resolve TODO in backend/server/routes/search.js regarding
  * userPrefs at line 45". The implementer resolved it by deleting the code the TODO referred to: the

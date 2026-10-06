@@ -114,8 +114,8 @@ export function seedCoverageBacklog({ max = 5 } = {}) {
     const base = g.file.split('/').pop();
     const context = `${g.dependents} module(s) depend on it${g.routes ? `, feeds ${g.routes} route module(s)` : ''}${g.sensitive ? ', sensitive area' : ''}`;
     // Three genuinely different situations, and the task text must not confuse them. In
-    // particular a file can be EXECUTED by the suite without any test file importing it — RentAll's
-    // auth.js is reached transitively through route tests and sits at 27%, while `testCount` is 0.
+    // particular a file can be EXECUTED by the suite without any test file importing it — an auth
+    // middleware reached transitively through route tests measured 27% while `testCount` was 0.
     // Keying the wording off `testCount` there produced a task claiming "has NO tests" directly
     // above the measured 27%. The measurement, when present, is the only thing that decides.
     const kind = g.linePct == null ? 'untested' : g.linePct === 0 ? 'never-executed' : 'thin';

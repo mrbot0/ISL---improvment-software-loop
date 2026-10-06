@@ -12,7 +12,7 @@
  *     click handler or a rarely-taken branch;
  *   - the WORKBENCH gate boots the app, and the app boots — the throw happens when a user opens
  *     the panel;
- *   - the REVIEWER scored the change that broke RentAll's search bar **95 out of 100**. Reading
+ *   - the REVIEWER scored the change that broke a live search bar **95 out of 100**. Reading
  *     scope across sibling components is exactly the kind of bookkeeping a language model does not
  *     do reliably, and it is exactly what a machine does perfectly.
  *

@@ -30,8 +30,8 @@ import { createSandbox, removeWorktree, git } from '../sandbox/worktree.js';
 /* ------------------------------- extractors -------------------------------- */
 
 const HTTP_VERBS = 'get|post|put|patch|delete|options|head|all';
-// Matches `r.get('/x'`, `router.post("/y"`, `app.delete(\`/z\``. The receiver name is free — RentAll
-// uses a one-letter `r`, most codebases use `router` or `app`, and pinning the name would silently
+// Matches `r.get('/x'`, `router.post("/y"`, `app.delete(\`/z\``. The receiver name is free — some
+// codebases use a one-letter `r`, most use `router` or `app`, and pinning the name would silently
 // find nothing on half of them.
 const ROUTE_RE = new RegExp(`\\b([A-Za-z_$][\\w$]*)\\.(${HTTP_VERBS})\\s*\\(\\s*['"\`]([^'"\`]*)['"\`]`, 'g');
 // Where a router gets mounted, which is what turns a relative route into a real URL.
