@@ -50,7 +50,7 @@ import { invalidateKnowledgeIndex } from '../context/knowledgeIndex.js';
 import { enqueueReview } from '../core/reviewQueue.js';
 import { canStartIteration } from '../core/costMeter.js';
 import { checkChangeBudget } from './changeBudget.js';
-import { checkIntentPreserved, reviewFloorVeto } from './intentGate.js';
+import { checkIntentPreserved } from './intentGate.js';
 import { checkSchemaMigrations } from './schemaGuard.js';
 import { checkScope, scopeGateMode } from './scopeGate.js';
 import { checkConflictMarkers } from './conflictGate.js';
@@ -119,6 +119,52 @@ export function checkpointDiff(iterationId, sandbox, lg) {
   } catch (err) {
     lg?.debug?.(`checkpoint skipped: ${err.message}`, { runId: iterationId });
   }
+}
+
+/**
+ * SOGLIE MINIME PER DIMENSIONE — la domanda a cui una media non sa rispondere.
+ *
+ * La media pesata risponde a "quanto è buono nel complesso". Committare però non è una domanda da
+ * media: è "c'è qualcosa che da solo squalifica questa modifica". Sono due domande diverse, e un
+ * numero solo non può rispondere a entrambe.
+ *
+ * La prova sta in questo stesso file: più sotto ci sono SEDICI punti di rollback, e quasi ognuno è
+ * stato aggiunto dopo che un difetto preciso era passato attraverso la media. Un file che non
+ * compila totalizzava ~80 perché il review pesa 0.2; una suite interamente rossa totalizzava 83
+ * perché i test pesano 0.15. Ogni volta la risposta è stata un veto su misura. Ma il difetto non
+ * stava in quale peso: sta nel fatto che una media DILUISCE per costruzione, e nessuna scelta di
+ * pesi può impedire a un'obiezione forte su una dimensione di essere coperta dai buoni voti sulle
+ * altre.
+ *
+ * Qui la regola diventa generale: una dimensione sotto la propria soglia squalifica, qualunque sia
+ * il totale. Il prossimo difetto che oggi richiederebbe il diciassettesimo veto richiede una riga
+ * di configurazione.
+ *
+ * I valori di partenza sono deliberatamente pochi. `review` a 70 è l'unico sorretto da una misura:
+ * i punteggi di review dei commit si addensano fra 0-55 e 75-100 con quasi nulla in mezzo, e tutte
+ * e quattro le rotture arrivate in produzione avevano review sotto 70. Per le altre dimensioni non
+ * esiste una distribuzione da cui ricavare una soglia, e inventarne una bloccherebbe lavoro buono
+ * sulla base di un'intuizione: restano spente (0) finché qualcuno non le misura.
+ */
+export function floorBreaches(scores, kpi = {}) {
+  const floors = {
+    review: kpi['floor.review'] ?? kpi.review_floor ?? 70,
+    security: kpi['floor.security'] ?? 0,
+    regression: kpi['floor.regression'] ?? 0,
+    test: kpi['floor.test'] ?? 0,
+    workbench: kpi['floor.workbench'] ?? 0,
+  };
+  const breaches = [];
+  for (const [dim, floor] of Object.entries(floors)) {
+    if (!floor) continue; // soglia a zero = spenta
+    const v = scores?.[dim];
+    // Una dimensione NON MISURATA non è una dimensione bocciata: una fase saltata non deve
+    // squalificare una modifica, altrimenti la soglia punirebbe l'assenza di un giudizio invece
+    // di un giudizio negativo. È la stessa ragione per cui `aggregate` salta i punteggi nulli.
+    if (v == null) continue;
+    if (v < floor) breaches.push({ dim, score: v, floor });
+  }
+  return breaches;
 }
 
 function aggregate(scores, kpi) {
@@ -605,11 +651,23 @@ export async function runIteration({ trigger = 'loop', signal, resume = null } =
         status = 'rolled_back';
         throw new Error(`schema veto — ${schemaCheck.summary}`);
       }
-      const reviewVeto = reviewFloorVeto(scores.review, { floor: kpi.review_floor ?? 70 });
-      if (reviewVeto) {
+      /*
+       * Le soglie per dimensione, al posto del veto su misura che c'era solo per il review.
+       *
+       * Stesso effetto di prima per il review (soglia 70, immutata), ma la regola ora vale per
+       * tutte le dimensioni ed è configurabile: aggiungere una soglia non richiede piu' di
+       * modificare questo file. Il messaggio nomina la dimensione e i due numeri, perché "punteggio
+       * sotto soglia" senza dire quale non aiuta nessuno a capire cosa correggere.
+       */
+      const breaches = floorBreaches(scores, kpi);
+      if (breaches.length) {
         rolledBack = true;
         status = 'rolled_back';
-        throw new Error(reviewVeto);
+        const detail = breaches.map((b) => `${b.dim} ${b.score} < ${b.floor}`).join(', ');
+        throw new Error(
+          `floor veto — ${detail}. Una dimensione sotto la sua soglia squalifica la modifica `
+          + `anche se il totale e' alto: la media diluisce, la soglia no.`,
+        );
       }
 
       // BEHAVIOUR-PRESERVATION GATE. A refactor that changes what the software does is a bug wearing

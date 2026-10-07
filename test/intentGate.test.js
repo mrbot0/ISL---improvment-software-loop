@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkIntentPreserved, countInDiff, namedIdentifiers, reviewFloorVeto } from '../src/iteration/intentGate.js';
+import { checkIntentPreserved, countInDiff, namedIdentifiers } from '../src/iteration/intentGate.js';
 
 /**
  * THE RUN THAT BROKE A LIVE SEARCH BAR.
@@ -119,23 +119,4 @@ test('countInDiff counts content lines, not file headers', () => {
 test('countInDiff respects word boundaries', () => {
   const d = ['--- a/x.js', '+++ b/x.js', '-const userPrefsCache = 1;'].join('\n');
   assert.deepEqual(countInDiff(d, 'userPrefs'), { added: 0, removed: 0 });
-});
-
-test('a review below the floor is disqualifying on its own', () => {
-  // #426 exactly: 55 with everything else near-perfect totalled 90 and committed.
-  assert.match(reviewFloorVeto(55), /review veto/);
-  assert.match(reviewFloorVeto(55), /below the floor/);
-  assert.equal(reviewFloorVeto(70), null);
-  assert.equal(reviewFloorVeto(95), null);
-});
-
-test('an unmeasured review is not treated as a failing one', () => {
-  // A skipped phase must not read as a zero — that would roll back every run that never graded.
-  assert.equal(reviewFloorVeto(null), null);
-  assert.equal(reviewFloorVeto(undefined), null);
-});
-
-test('the floor is configurable', () => {
-  assert.equal(reviewFloorVeto(65, { floor: 60 }), null);
-  assert.match(reviewFloorVeto(65, { floor: 80 }), /below the floor of 80/);
 });

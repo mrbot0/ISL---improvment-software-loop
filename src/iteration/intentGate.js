@@ -154,16 +154,9 @@ export function checkIntentPreserved(plan, diff, { minRemovals = 1 } = {}) {
   };
 }
 
-/**
- * The review floor.
- *
- * Review is the only grader that compares the change to what was asked for; the rest measure
- * mechanical properties of the result. At a weight of 0.2 its verdict is arithmetically incapable
- * of stopping anything on its own — 55 alongside four near-perfect mechanical scores totals 90.
- * Below the floor the change is rejected outright, whatever the average says.
+/*
+ * `reviewFloorVeto` viveva qui. E' stata sostituita da `floorBreaches` in engine.js, che applica
+ * la stessa regola a OGNI dimensione invece che al solo review, e la rende configurabile dalla
+ * tabella kpi. Teneva un solo caso speciale cablato; ora aggiungere una soglia non richiede di
+ * toccare il codice.
  */
-export function reviewFloorVeto(reviewScore, { floor = 70 } = {}) {
-  if (reviewScore == null) return null;
-  if (reviewScore >= floor) return null;
-  return `review veto — the reviewer scored this ${reviewScore}, below the floor of ${floor}; a low review is not outvoted by the other gates`;
-}
