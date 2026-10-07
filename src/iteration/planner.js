@@ -110,6 +110,17 @@ export async function plan({ logger = log.for('planner'), signal, iterationId = 
       target: f.title,
       file: null,
       failures: f.failures,
+      /*
+       * LA PRIORITA' DEL BACKLOG ARRIVA FINO ALLO SCHEDULER.
+       *
+       * `taskPriority` dichiara che una priorita' dichiarata dal piano e' autorevole e vince sul
+       * peso dedotto dallo specialista. Era un'affermazione senza oggetto: nessun produttore nel
+       * repository scriveva `task.priority`, quindi quel ramo non veniva mai preso e l'unico
+       * segnale vivo restava una tabella di pesi scritta a mano. Il dato pero' esisteva gia' — la
+       * tabella `features` ha una colonna `priority` su 1..100 che un operatore puo' impostare, e
+       * `pickFeatures` la restituisce. Mancava solo che attraversasse il planner.
+       */
+      priority: f.priority,
       why: f.description || f.area || '',
     })),
   ];
@@ -188,6 +199,11 @@ For each task you MUST give:
 - "files":   EVERY file the change touches. This is load-bearing: tasks that declare no overlapping
              files are executed in PARALLEL, so an under-declared file list causes a collision.
              Be exact and be complete.
+- "dependsOn": the "ref"s of tasks IN THIS BATCH that must land BEFORE this one — e.g. the task
+             that USES a new helper declares dependsOn:["fn:12"] naming the task that ADDS it.
+             Non-overlapping files run in PARALLEL, so this is the only way to say "after".
+             REAL dependencies only: a declared one you do not need serialises the batch and
+             throws the parallelism away. Empty array when the task stands on its own.
 - "steps":   the actual edit, step by step, concrete enough that the implementer only has to type it.
 - "acceptance": how we would know it worked — the assertion, the query count, the status code.
 - "integration": if the change crosses a boundary (route → service, service → service, frontend →
@@ -215,7 +231,7 @@ together. Prefer changes that make the seams solid — agreed contracts, explici
 failure behaviour, reuse of the existing shared client instead of a second hand-rolled fetch.
 
 Return ONLY JSON:
-{"title": string, "theme": string, "tasks": [{"ref","title","rationale","agent","files":[],"steps":[],"acceptance","integration"}]}
+{"title": string, "theme": string, "tasks": [{"ref","title","rationale","agent","files":[],"dependsOn":[],"steps":[],"acceptance","integration"}]}
 `.trim();
 
   /*
@@ -271,7 +287,7 @@ Return ONLY JSON:
           .map((c) => `- ref=${c.ref} [${c.kind}] ${c.target}${c.file ? ` (${c.file})` : ''} — ${c.why}`
             + (c.hasTests === true ? ' · ALREADY HAS A TEST FILE — do not propose writing one; improve the code itself'
               : c.hasTests === false ? ' · has no test file yet' : ''))
-          .join('\n')}\n\nReturn ONLY the JSON: {"title","theme","tasks":[{"ref","title","rationale","agent","files":[],"steps":[],"acceptance","integration"}]}`;
+          .join('\n')}\n\nReturn ONLY the JSON: {"title","theme","tasks":[{"ref","title","rationale","agent","files":[],"dependsOn":[],"steps":[],"acceptance","integration"}]}`;
       const r2 = await llmGate.run(() => llmJson({ system, user: retryUser, model: modelFor('plan'), temperature: 0.15, signal }), signal);
       if (Array.isArray(r2.data?.tasks) && r2.data.tasks.length) {
         data = r2.data;
@@ -309,6 +325,21 @@ Return ONLY JSON:
 
       return {
         kind,
+        /*
+         * IL `ref` E LE DIPENDENZE ARRIVANO FINO ALLO SCHEDULER.
+         *
+         * Senza queste due righe il campo `dependsOn` che il prompt chiede verrebbe letto e
+         * buttato qui, e lo scheduler non vedrebbe mai un ordine da rispettare: una regola
+         * nel prompt che non arriva a destinazione e' peggio della sua assenza, perche' costa
+         * token e fa credere che l'ordinamento esista. Il `ref` serve perche' e' il nome con
+         * cui un task e' nominabile dagli altri. Passano grezze: la validazione — ref
+         * inesistenti, auto-dipendenze, cicli — sta tutta in `planWaves`, in un solo posto.
+         */
+        ref: t.ref != null ? String(t.ref).trim() : cand?.ref || null,
+        // La priorita del backlog, se il candidato ne porta una: e il solo segnale autorevole
+        // che lo scheduler riconosce sopra il peso dedotto dallo specialista.
+        priority: Number.isFinite(Number(cand?.priority)) ? Number(cand.priority) : undefined,
+        dependsOn: t.dependsOn,
         functionId: cand?.ref?.startsWith('fn:') ? Number(cand.ref.slice(3)) : null,
         featureId: cand?.ref?.startsWith('feat:') ? Number(cand.ref.slice(5)) : null,
         agent,
@@ -353,6 +384,10 @@ Return ONLY JSON:
         const name = String(c.target || '').includes('#') ? c.target.split('#').pop() : null;
         return {
           kind: c.kind === 'feature' ? 'feature' : 'improvement',
+          // Stessa forma dei task del modello: un task sintetizzato non dipende da nessuno, ma
+          // resta nominabile, perche' e' il `ref` a legare un task agli altri del lotto.
+          ref: c.ref || null,
+          dependsOn: [],
           functionId: c.ref?.startsWith('fn:') ? Number(c.ref.slice(3)) : null,
           featureId: c.ref?.startsWith('feat:') ? Number(c.ref.slice(5)) : null,
           agent: inferAgent(files),
