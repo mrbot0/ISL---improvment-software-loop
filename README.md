@@ -103,7 +103,15 @@ worktree. But the absence of file collisions is not enough: A can change a funct
 `a.js` while B calls it from `b.js` — no collision, each one passes its own checks, the combination
 is broken.
 
-So, between one wave and the next:
+Two things close that gap. First, a task can **declare an order**: `dependsOn` names other tasks that
+must land before it, so "add the helper" runs before "use the helper" even though the two touch
+different files. Cycles, self-dependencies and references to a task that is not in the batch are
+broken deterministically and reported — a task silently dropped by a scheduler is worse than an
+error. Second, waves are formed by **importance**, so a security fix opens the plan instead of
+queueing behind cosmetic work, with a bounded slip so nothing starves and a guard that keeps the
+reordered plan only when it is no longer than the plan order.
+
+Then, between one wave and the next:
 
 - the agents receive **what actually changed** — which exports appeared, disappeared or changed
   signature — not just the titles of the other tasks;
