@@ -1,139 +1,250 @@
 # ISL — Improvement Software Loop
 
-An autonomous, **multi-project** software-improvement control plane. ISL points a fleet of
-specialist AI agents (security, tests, performance, quality, frontend, services, workbench) and a
-layer of supervisory managers at *any* code folder, iterates on it in a sandbox, proves the app
-still boots, and lands the change — all from an enterprise dashboard behind a login.
+**Un sistema autonomo che migliora codice altrui e si rifiuta di rompere ciò che tocca.**
 
-It is the evolution of a single-product agent control plane into a reusable platform: the same agents,
-the same managers, the same dashboard — plus everything below.
+Gli punti una cartella di codice — qualsiasi linguaggio, qualsiasi struttura — e ISL la legge,
+decide cosa vale la pena cambiare, scrive la modifica in una sandbox isolata, la sottopone a una
+batteria di controlli, e la fa atterrare **solo se li supera tutti**. Il tuo ramo principale e il
+tuo albero di lavoro non vengono toccati fino a quel momento.
 
-## What's new over the base control plane
+Versione **2.0.0** · Node ≥ 22.5 · sette dipendenze in produzione (`express`, `ws`, `cors`,
+`dotenv`, `diff`, `pdf-parse`, `mammoth`) · SQLite nativo, nessun ORM.
 
-| Capability | What it does |
+---
+
+## Il problema che risolve
+
+Un modello linguistico sa scrivere una modifica plausibile. Non sa se funziona.
+
+La differenza fra un assistente che suggerisce e un sistema che si può lasciare acceso sta tutta
+qui: cosa succede quando la modifica è sbagliata **e sembra giusta**. ISL è costruito attorno a
+quella domanda. Ogni controllo descritto sotto esiste perché un difetto preciso è passato, è
+arrivato agli utenti, ed è stato ricostruito a ritroso.
+
+Alcuni esempi, tutti reali e documentati nel codice:
+
+| Cosa è passato | Perché nessuno l'ha fermato |
 |---|---|
-| **Multi-project** | A project registry (`platform.db`). Each project has its **own** SQLite database under `.data/projects/<id>/`, its own detected layout (repo root, base branch, product dirs) and its own agents. Switch the active project at runtime from the dashboard — no restart. |
-| **Auth & access** | Login panel, scrypt-hashed passwords, opaque session cookies. The seeded admin (`ADMIN_EMAIL`) claims its password on first sign-in. Every `/api/*` route and the WebSocket are gated. |
-| **Admin panel** | Admin-only: user management (invite / role / enable-disable / reset / delete), a platform audit trail, and an overview. Invited users are `pending` until they claim their password. |
-| **Context Manager** | Reads **all** project documents (`.md .pdf .docx .doc .txt .rst .adoc …`) across the folder tree, derives a grounded project profile (what it is, objective, stack, key flows, glossary) and asks **≤10 targeted questions** — auto-answering from the docs where it can, asking you only the genuine gaps. The context is injected into every agent's prompt. |
-| **Doc agents** | `doc-verifier` finds coverage gaps, drift and stale docs (broken path references + an LLM pass). `doc-updater` re-checks documentation whenever work is merged to the base branch and flags what needs updating. |
-| **Reliability Manager** | Watches the fleet's **own** failures: clusters recurring errors, detects anomalies (repeated failures, no-output runs, verification collapse), scores fleet reliability, and distils concrete improvement signals (deterministically + an on-demand LLM advisor). |
-| **Deterministic guardrails & code intelligence** (2026-07) | A no-LLM layer that guards every change and aims the fleet: **security/safety/dead-code/refactor/change-size vetoes**, **blast-radius** reverse-dep analysis, a **human review queue with per-agent trust**, **structural / coverage / health / dependency-CVE / frontend-a11y** scans that seed the backlog, an **interactive refactor dry-run**, **regression bisect & revert**, **flaky-test detection**, a **hybrid (BM25 + `nomic-embed-text` vector) knowledge index / RAG**, **cross-project learning transfer**, **digest reports**, and **scheduled quiet-hours improvement windows**. See ISL.md §28. |
-| **Closing the loop** (2026-07, wave 2) | The layer above now *acts*: **rejection-driven learning** (a human "no" becomes a durable pitfall and costs the agent its trust), **auto-bisect on a pre-existing failure** (a change is never blamed for a break it didn't cause), **CVE auto-remediation** (computes the semver-safe upgrades, in isolation, never touching your checkout), a **unified impact ranking** ("fix these first"), **`search_knowledge` as an agent/Alfred tool** + **"find a similar past change"**, **auto-changelog**, **backlog dedup**, **health-gated autonomy** (auto-land suspends while health drops), and **trust-gated auto-promotion** (earned commits fast-forward, contiguous prefix only, off by default). |
-| **Intent, review-floor & schema gates** (2026-08, wave 3) | Three vetoes added after four landed changes broke the target application. **Intent**: a task that says it will add or fix `X` and produces a diff where `X` is deleted and never re-added is rolled back. **Review floor**: a review score below `review_floor` (default 70) is disqualifying on its own — the weighted average gave review a weight of 0.2, so a review of 0 still totalled 79 against a threshold of 60. **Schema**: a Prisma model field added with no migration in the same change is a column that will not exist. All four historical breakages are blocked by these; see ISL_IMPROVE §"The four changes that broke the target app". |
-| **Planner candidate selection** (2026-08) | Failures now *divide* a candidate's weight instead of merely breaking ties between equal ones, plus a cooldown on targets that failed in the last few runs. Before: the same high-weight function was planned in four consecutive runs, failing each time. |
-| **Backlog claim recovery** | A run reserves what it works on and an interrupted run never releases it, while the planner only ever picks `pending` — so every interruption permanently shrank the pool. `GET /api/backlog/claims` reports what is reserved with no run behind it; `POST /api/backlog/reclaim` hands it back without deleting anything. |
-| **Schema integrity agent** | Prisma validates a field against the real table only when a query runs, so a mismatched schema passes every gate and fails in production. This agent compares every model against the live database's `information_schema` after each commit and on demand. Strictly read-only: it issues no DDL and edits no `.prisma` file. |
-| **Runtime: per-container control + schema tab** | Stop / start / restart / rebuild one service instead of the whole stack, and a read-only view of every Prisma schema with the integrity verdict. Containers started outside ISL are adopted rather than ignored. No compose invocation may carry `-v`: the code refuses it, and a test over the source enforces it. |
-| **Durable event history** | The list of event types persisted to the DB had never moved past the agent era — no `iteration.*`, no `impl.*` — so a run's history existed only as a WebSocket broadcast and vanished on reload. The pipeline events are now stored, and the Flow view reads a history instead of watching one go by. |
-| **Uptime supervisor** | The server runs under `supervisor.mjs` (`npm run serve`): it auto-restarts within seconds on any exit, a memory watchdog exits cleanly before OOM, and the loop auto-resumes — so ISL stays up for days, not hours. |
+| Un file che non compila | il review pesa 0.2 → il totale restava ~80 su una soglia di 60 |
+| Una suite interamente rossa | i test pesano 0.15 → totale 83 |
+| Una barra di ricerca resa inutilizzabile | il reviewer le diede **95 su 100** |
+| Un campo aggiunto a uno schema senza migrazione | compila, i test passano, il servizio si avvia |
 
-## Architecture
+Da lì discende il principio che regge tutto: **il giudizio di un modello non è una garanzia.** Dove
+una verifica può essere meccanica, è meccanica.
+
+---
+
+## Come funziona una iterazione
+
+Dieci fasi, in sequenza, dentro un worktree git separato:
 
 ```
-src/
-  config.js            active-project config via live bindings (repo root, dirs, branch)
-  db.js                per-project SQLite handle behind a Proxy — openProjectDb() swaps it
-  db_iteration.js      iteration/backlog/kpi schema (registered per project)
-  platform/
-    platformDb.js      projects + users + sessions + audit (the shared platform DB)
-    projects.js        project registry CRUD
-    users.js           scrypt auth, sessions, claim-on-first-login
-    activeProject.js   the runtime switch: config + DB + agent re-seed
-    authMiddleware.js  cookie auth + requireAuth / requireAdmin + WS gate
-    routes.js          auth / projects / admin API
-    featureRoutes.js   context / reliability / guardrails / intelligence API
-  core/                decisionNetwork, trust, reviewQueue, crossProject, improvementWindows, scheduler
-  context/             ingest, extraction, Context Manager + doc agents, knowledgeIndex (RAG)
-  reliability/         error store, Reliability Manager + advisor
-  managers/            13 managers (incl. Context + Reliability)
-  iteration/           engine + graders + the deterministic scans (blast/coverage/health/structural/
-                       refactorPlan/changeBudget/frontendAudit/bisect/flaky/digest/securityGate/safetyGate)
-                       intentGate.js   did the diff do what the task said it would?
-                       schemaGuard.js  a schema field added without a migration
-  runtime/             compose.js (per-service control, refuses volume-destroying flags)
-                       schemaAgent.js  model-vs-database integrity, read-only
-  agents/, sandbox/, services/, deploy/             the improvement engine (deploy incl. depScan)
-supervisor.mjs         auto-restarting process supervisor (npm run serve)
-dashboard/             React + Vite + Tailwind enterprise dashboard
-  src/merged.js            route aliases: pages folded into tabs keep their old URLs
-  src/components/TabbedView.jsx   the tab shell — renders existing views unchanged
-  src/undefined-refs.test.js      guard: a JSX component or hook used but never imported
+catalog → survey → plan → implement → review → security → regression → test → workbench → finalize
 ```
 
-The key move is that **nothing about the code being improved is a boot-time constant**. Every
-project-specific value is a live binding reassigned by `setActiveProjectConfig()`, and the DB is a
-swappable handle — so switching the active project re-points the entire runtime.
+**`catalog`** cataloga il codice reale: file, funzioni, complessità, punti caldi.
+**`survey`** cerca lavoro che valga la pena fare partendo da prove — TODO reali a righe reali,
+`catch` vuoti, file senza test, giunzioni fra servizi senza timeout.
+**`plan`** trasforma le prove in task piccoli e verificabili, ognuno con i file che tocca dichiarati.
+**`implement`** esegue i task (vedi *Lavorare in parallelo*).
+**`review` · `security` · `regression` · `test`** giudicano il risultato da quattro angoli diversi.
+**`workbench`** è la fase che si guadagna il posto: **avvia davvero l'applicazione** e rifiuta la
+modifica se non parte più — il guasto che ogni test unitario del mondo supera indenne.
+**`finalize`** decide: commit o annullamento.
 
-## Requirements
+### I cancelli
 
-- Node ≥ 22.5 (uses the built-in `node:sqlite`)
-- [Ollama](https://ollama.com) running locally with the configured model (default `qwen3.6:latest`)
+Alla fine la modifica incontra **undici veto deterministici**. Nessuno chiede un parere a un modello:
 
-## Run
+`parse` (il file non compila) · `test` (ha rotto una suite che prima passava) · `regression` (ha
+rimosso qualcosa di pubblico) · `security` · `scope` (un identificatore usato e legato da nessuna
+parte) · `conflict` (marcatori di merge non risolti) · `schema` (campo senza migrazione) · `intent`
+(il diff non corrisponde al titolo del task) · `behaviour` · `dead-code` · `coverage`.
+
+Accanto a loro, **le soglie minime per dimensione**. Una media pesata risponde a *«quanto è buono nel
+complesso»*; committare è un'altra domanda: *«c'è qualcosa che da solo squalifica»*. Una media
+diluisce per costruzione — è il motivo per cui un file non compilabile totalizzava 80. Una dimensione
+sotto la sua soglia squalifica la modifica qualunque sia il totale, e le soglie si configurano senza
+toccare il codice.
+
+---
+
+## Gli agenti
+
+Tredici specialisti. Non sono processi separati: sono **le persone che l'implementer indossa** in
+base al task, ognuno con il proprio obiettivo, il proprio ambito di file e la propria inclinazione
+alla severità.
+
+| Agente | Che cosa cerca |
+|---|---|
+| 🛡️ **Security Auditor** | Falle di autorizzazione, injection, input non validato, dati esposti |
+| 🧪 **Test Engineer** | Copertura sui rami non testati, soprattutto errori e casi limite |
+| ⚡ **Performance Engineer** | Query N+1, indici mancanti, fetch illimitati, render inutili |
+| 🧹 **Code Quality** | Duplicazione, codice morto, gestione degli errori, nomi |
+| ♿ **Frontend / A11y** | Accessibilità: nomi, raggiungibilità da tastiera, focus, contrasto |
+| 🔗 **Services / Integration** | Le giunzioni fra servizi: contratti, timeout, retry, comportamento in guasto |
+| 🔧 **Workbench** | Che l'applicazione si avvii, serva e compili — non che passi i test |
+| 🛟 **Resilience Engineer** | Timeout, retry, idempotenza, degradazione controllata |
+| 📋 **Compliance Engineer** | Violazioni delle buone pratiche, per linguaggio |
+| 📚 **Documentation Engineer** | Documentazione che ha smesso di corrispondere al codice |
+| 🏗️ **Infrastructure Engineer** | IaC, container e CI allineati al codice |
+| 🧱 **Refactoring Engineer** | Confini fra moduli, logica condivisa, accoppiamento |
+| 🎨 **UX Engineer** | Usabilità, coerenza, stati di caricamento e vuoti |
+
+A ognuno arrivano nel prompt: il profilo del progetto, le regole che non deve violare, i rischi già
+registrati su quell'area, e **le regole permanenti** — lezioni ricavate da difetti che hanno
+raggiunto gli utenti attraversando una pipeline interamente verde.
+
+### Lavorare in parallelo senza pestarsi i piedi
+
+I task che non dichiarano file in comune vengono raggruppati in **onde** ed eseguiti insieme, ognuno
+nel proprio worktree. Ma l'assenza di collisioni sui file non basta: A può cambiare la firma di una
+funzione in `a.js` mentre B la chiama da `b.js` — nessuna collisione, ognuno passa i propri
+controlli, la combinazione è rotta.
+
+Per questo, fra un'onda e l'altra:
+
+- gli agenti ricevono **cosa è realmente cambiato** — quali export sono comparsi, spariti o hanno
+  cambiato firma — non solo i titoli dei task altrui;
+- i gate deterministici girano sull'accumulatore e il difetto viene **attribuito all'onda che lo ha
+  introdotto**: il fallimento dice *«introdotto nell'onda 2 dal task 3»*, non *«iterazione
+  annullata»*;
+- dove l'analisi non sa guardare lo **dichiara** invece di tacere. Un elenco vuoto accanto a un file
+  cambiato si legge come «non è cambiato niente», che è la conclusione opposta a quella vera.
+
+---
+
+## Gli agent manager
+
+Tredici supervisori che osservano il sistema mentre lavora. Non scrivono codice: tengono d'occhio
+una dimensione ciascuno, si avvisano a vicenda, e ciò che trovano arriva agli agenti.
+
+| Manager | Dominio |
+|---|---|
+| **Quality** | Verifica, review e qualità delle iterazioni |
+| **Throughput** | Velocità e costo della flotta |
+| **Risk** | Gravità ed esposizione di sicurezza |
+| **Insights** | Quali agenti sono efficaci, dove si concentra il lavoro |
+| **Operations** | Salute del runtime e controllo |
+| **Services** | Integrazione fra servizi e contratti |
+| **Workbench** | Esecuzione locale e salute dell'avvio |
+| **Implementation** | Pipeline di iterazione e flusso del backlog |
+| **Director** | Task critici e smistamento |
+| **Compliance** | Conformità alle buone pratiche, su tutti i linguaggi |
+| **Context** | Contesto del progetto e documentazione |
+| **Deployment** | Strategia di rilascio e deriva dell'infrastruttura |
+| **Reliability** | Errori degli agenti, anomalie, auto-miglioramento |
+
+### Come comunicano
+
+Tre canali, ognuno con una ragione precisa.
+
+**Verso gli agenti.** Quando un manager trova qualcosa finisce in memoria condivisa, indicizzata per
+area, e da lì nei prompt di planner, implementer e graders. Un rischio su un'area raggiunge chi
+lavora su quell'area.
+
+**Fra manager.** Ognuno ha una posta in arrivo: i messaggi dei pari arrivano con il loro contenuto,
+non come semplice notifica. L'iscrizione sta nella classe base, non nelle singole sottoclassi — un
+canale che ogni manager deve ricordarsi di collegare è un canale che metà non collega.
+
+**Il contesto che cambia il significato.** Quando un manager va in allarme, il suo brief porta con sé
+cosa stanno segnalando gli altri. *«I test falliscono»* vuol dire una cosa diversa quando Workbench
+sta dicendo che l'applicazione non si avvia affatto: nel secondo caso nei test non c'è niente da
+riparare.
+
+---
+
+## Multi-progetto
+
+Un registro dei progetti in `platform.db`. **Ogni progetto ha il proprio database** sotto
+`.data/projects/<id>/`, con la propria struttura rilevata (radice, ramo base, cartelle di prodotto)
+e i propri agenti. Si cambia progetto attivo dalla dashboard, senza riavviare.
+
+Nessun nome di prodotto è cablato nei prompt: ciò che il sistema sa di un progetto lo ha letto da
+quel progetto.
+
+---
+
+## La dashboard
+
+React + Vite dietro login. Le run in corso e passate, il backlog, le proposte da approvare, lo stato
+di agenti e manager, i servizi e i container, lo schema del database, la memoria della flotta.
+
+Da qui si avvia e si ferma il loop, si promuovono i commit, si ripara l'albero di lavoro sporco — e
+si **spegne ISL del tutto**: il server esce con un codice che il supervisore riconosce come arresto
+voluto ed esce a sua volta, invece di riavviarlo.
+
+---
+
+## Requisiti
+
+- **Node ≥ 22.5** (usa `node:sqlite`, il modulo nativo)
+- Un modello locale servito da **Ollama**, o un endpoint compatibile
+- Git
+
+## Avvio
 
 ```bash
-npm run setup            # install backend + dashboard deps
-npm run dashboard:build  # build the dashboard (served by the backend)
-npm run serve            # http://localhost:7878 — via the auto-restarting supervisor (recommended)
-# npm start              # run the server directly (no auto-restart)
+npm install
+cp .env.example .env     # imposta DEFAULT_PROJECT_PATH e AUTH_SECRET
+npm --prefix dashboard install && npm --prefix dashboard run build
+node supervisor.mjs
 ```
 
-First sign-in: use `ADMIN_EMAIL` (default `admin@example.com`) and any password ≥ 8
-chars — that sets the admin password and claims the account. Then open **Context → Build context**
-to onboard the active project, and **Projects** to add more code folders.
+Poi apri `http://localhost:7878`.
 
-Dev (hot-reload dashboard on :5273, proxying the API):
+Avvia **sempre `supervisor.mjs`**, mai `src/server.js` direttamente: il supervisore alza lo heap e
+riavvia il server entro pochi secondi dopo un crash o un esaurimento di memoria. L'unica uscita che
+non viene riavviata è l'arresto richiesto dall'operatore.
+
+Le modifiche alla dashboard richiedono `npm --prefix dashboard run build`: viene servita da `dist`.
+
+## Configurazione
+
+Le chiavi stanno in `.env.example`, commentate. Le due che contano:
+
+- **`DEFAULT_PROJECT_PATH`** — la cartella del codice da migliorare. Senza, ISL parte su sé stesso.
+- **`AUTH_SECRET`** — il valore predefinito è un segnaposto. Su qualunque macchina raggiungibile da
+  altri va cambiato: è l'unica cosa che protegge un piano di controllo che esegue codice e scrive
+  commit.
+
+ISL **non va esposto su una rete pubblica**. Vedi [SECURITY.md](SECURITY.md).
+
+## Test
 
 ```bash
-npm run dev            # backend with --watch
-npm run dashboard      # vite dev server
+npm test                      # 254 test, test runner di Node, nessuna dipendenza
+npm --prefix dashboard test   # 356 test, Vitest
 ```
 
-## Configuration (`.env`)
+Alcuni meritano una menzione, perché non verificano funzioni ma **proprietà che si perderebbero
+senza far fallire niente**:
 
-| Var | Default | Meaning |
-|---|---|---|
-| `PORT` | `7878` | HTTP + WebSocket port |
-| `ADMIN_EMAIL` | `admin@example.com` | Seeded admin account |
-| `AUTH_SECRET` | dev secret | Session cookie secret — set in production |
-| `SESSION_TTL_HOURS` | `168` | Session lifetime |
-| `DEFAULT_PROJECT_PATH` | — | Code folder for the seeded first project — point it at the codebase you want ISL to start from. There is no portable default: set it on a fresh install. |
-| `OLLAMA_HOST` / `OLLAMA_MODEL` | `127.0.0.1:11434` / `qwen3.6:latest` | LLM backend |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model for the knowledge index's vector search (empty = lexical-only). `ollama pull nomic-embed-text` to enable. |
-| `ISL_MEM_LIMIT_MB` | `1400` | RSS at which the memory watchdog restarts the server cleanly |
+- `scopeGate.test.js` — la forma esatta che rese inutilizzabile una barra di ricerca in produzione
+  con un punteggio di review di 95 su 100
+- `composeSafety.test.js` — legge il sorgente e fallisce se un comando compose porta `-v`. Quel flag
+  cancella il volume del database e, a differenza di tutto il resto, non ha un annullamento
+- `standingRules.test.js` — che le regole permanenti restino generiche: prende il nome del progetto
+  attivo dalla configurazione, quindi vale per qualunque prodotto ISL stia governando
+- `floorBreaches.test.js` — che una dimensione **non misurata** non venga scambiata per bocciata:
+  una fase saltata non deve annullare una run
 
-Roles: **admin** (everything, incl. the admin panel and project management), **user** (operate the
-loop, switch projects, answer context questions), **viewer** (read-oriented).
+## Contribuire
 
-## Tests
-
-```bash
-npm test                       # backend — node:test
-cd dashboard && npx vitest run # dashboard — vitest + testing-library
-```
-
-Two of these are structural guards rather than ordinary unit tests, and both exist because the
-failure they catch had already shipped:
-
-- `dashboard/src/undefined-refs.test.js` — there is no linter configured, and Vite compiles JSX
-  without resolving identifiers, so a component or hook used but never imported builds cleanly and
-  throws only when a user opens that page. It has happened three times.
-- `test/composeSafety.test.js` — reads `src/runtime/compose.js` and fails if any compose command
-  carries `-v` or `--volumes`. That flag deletes the database volume, and unlike everything else
-  the runtime can do, it has no undo.
+[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## Licenza
 
-ISL è distribuito sotto **GNU Affero General Public License v3.0**. Il testo completo è in
-[LICENSE](LICENSE).
+**GNU Affero General Public License v3.0** — testo completo in [LICENSE](LICENSE).
 
-In breve, e senza che questo sostituisca la licenza: sei libero di usare, studiare, modificare e
-ridistribuire ISL. Se lo modifichi e lo rendi disponibile ad altri — anche soltanto facendolo girare
-come servizio accessibile in rete, senza distribuirne una copia — devi offrire a chi lo usa il codice
-sorgente della tua versione. È la clausola che distingue l'AGPL dalla GPL (sezione 13), ed è
-deliberata: ISL è un piano di controllo che si usa attraverso un'interfaccia web, e senza quella
-clausola chiunque potrebbe offrirlo come servizio chiuso senza restituire nulla.
+Sei libero di usare, studiare, modificare e ridistribuire ISL. Se lo modifichi e lo rendi
+disponibile ad altri — anche solo facendolo girare come servizio raggiungibile in rete, senza
+distribuirne una copia — devi offrire a chi lo usa il sorgente della tua versione. È la clausola che
+distingue l'AGPL dalla GPL (sezione 13), ed è deliberata: ISL è un piano di controllo che si usa
+attraverso un'interfaccia web, e senza quella clausola chiunque potrebbe offrirlo come servizio
+chiuso senza restituire nulla.
 
     ISL — Improvement Software Loop
     Copyright (C) 2026  mrbot0
