@@ -232,8 +232,38 @@ export function exportSurface(src) {
   for (const m of code.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\s*\*?\s*[\w$]*\s*)?\(([^)]*)\)\s*(?:=>|\{)/g)) put(m[1], signature(m[2]));
   for (const m of code.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?([A-Za-z_$][\w$]*)\s*=>/g)) put(m[1], signature(m[2]));
   for (const m of code.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) put(m[1], '');
+  /*
+   * `export { f }` — il nome c'era, LA FIRMA NO.
+   *
+   * Questa riga registrava ogni riesportazione con firma vuota. Il nome risultava tracciato, ma
+   * cambiare `send(url, body)` in `send(url, body, timeoutMs)` non produceva alcuna nota: prima e
+   * dopo la superficie diceva `send → ''`, e il confronto non vedeva differenze.
+   *
+   * È esattamente lo scenario scritto nel commento che motiva questa funzione — "A cambia la firma
+   * di `send`, B la chiama" — e per i moduli che esportano con la lista il meccanismo taceva. Dieci
+   * moduli di ISL stesso usano questo stile; su un progetto altrui la quota può essere più alta.
+   *
+   * La firma si trova dove la funzione è DICHIARATA, nello stesso file: la lista di export rimanda
+   * a un nome locale, e quel nome ha un corpo qualche riga sopra.
+   */
+  const localSignature = (name) => {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) return '';
+    const fn = new RegExp(`\\bfunction\\s*\\*?\\s*${name}\\s*\\(([^)]*)\\)`).exec(code);
+    if (fn) return signature(fn[1]);
+    const arrow = new RegExp(`\\b(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s+)?\\(([^)]*)\\)\\s*=>`).exec(code);
+    if (arrow) return signature(arrow[1]);
+    const unario = new RegExp(`\\b(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s+)?([A-Za-z_$][\\w$]*)\\s*=>`).exec(code);
+    if (unario) return signature(unario[1]);
+    return ''; // un valore, non una funzione: non c'è firma da confrontare
+  };
   for (const m of code.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
-    for (const part of m[1].split(',')) put((part.split(/\s+as\s+/).pop() || '').trim(), '');
+    for (const part of m[1].split(',')) {
+      const pezzi = part.split(/\s+as\s+/);
+      const esposto = (pezzi[pezzi.length - 1] || '').trim();
+      // La firma va cercata sul nome LOCALE (quello prima di `as`): è lui a essere dichiarato qui.
+      const locale = (pezzi[0] || '').trim();
+      if (esposto) put(esposto, localSignature(locale || esposto));
+    }
   }
   return surface;
 }

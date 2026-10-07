@@ -146,6 +146,31 @@ export function checkpointDiff(iterationId, sandbox, lg) {
  * esiste una distribuzione da cui ricavare una soglia, e inventarne una bloccherebbe lavoro buono
  * sulla base di un'intuizione: restano spente (0) finché qualcuno non le misura.
  */
+/**
+ * "Quale task ha rotto questo" — la risposta che esisteva e non arrivava a nessuno.
+ *
+ * Durante l'implementazione ogni onda viene controllata e i difetti trovati sono attribuiti all'onda
+ * che li ha introdotti. Quel lavoro finiva in `implResult.waveDefects`, che `engine.js` non leggeva:
+ * l'operatore vedeva "iterazione annullata — scope veto" e doveva risalire da solo, fra quattro
+ * onde e dieci task, a chi fosse stato.
+ *
+ * Qui l'attribuzione viene agganciata al messaggio di fallimento. Il confronto è sul FILE: un
+ * difetto comparso nell'onda 2 nel file `x.js` e un veto in finalize sullo stesso file sono la
+ * stessa cosa vista due volte, una appena nata e una alla fine.
+ *
+ * Silenzioso quando non sa: senza corrispondenza non aggiunge nulla. Un'attribuzione sbagliata
+ * manda qualcuno a leggere il task innocente, ed è peggio del non averla.
+ */
+function blameFor(implResult, findings = []) {
+  const defects = implResult?.waveDefects;
+  if (!Array.isArray(defects) || !defects.length || !findings.length) return '';
+  const files = new Set(findings.map((f) => String(f?.file || '').replace(/\\/g, '/')).filter(Boolean));
+  const hit = defects.find((d) => files.has(String(d?.file || '').replace(/\\/g, '/')));
+  if (!hit) return '';
+  const chi = hit.task ? ` dal task ${hit.index} "${hit.task}"` : '';
+  return ` — introdotto nell'onda ${hit.wave}${chi}`;
+}
+
 export function floorBreaches(scores, kpi = {}) {
   const floors = {
     review: kpi['floor.review'] ?? kpi.review_floor ?? 70,
@@ -620,14 +645,14 @@ export async function runIteration({ trigger = 'loop', signal, resume = null } =
       if (conflicts.veto) {
         rolledBack = true;
         status = 'rolled_back';
-        throw new Error(`conflict veto — ${conflicts.summary}`);
+        throw new Error(`conflict veto — ${conflicts.summary}${blameFor(implResult, conflicts.findings)}`);
       }
       if (scopeGateMode() !== 'off') {
         const scope = checkScope(diffInfo.diff, { root: sandbox });
         if (scope.veto && scopeGateMode() === 'enforce') {
           rolledBack = true;
           status = 'rolled_back';
-          throw new Error(`scope veto — ${scope.summary}`);
+          throw new Error(`scope veto — ${scope.summary}${blameFor(implResult, scope.findings)}`);
         }
         if (scope.veto) lg.warn(`scope (advisory, non blocca): ${scope.summary}`, { runId: iterationId });
         else if (scope.checked) lg.info(`scope: ${scope.summary}`, { runId: iterationId });

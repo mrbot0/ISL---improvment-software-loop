@@ -150,3 +150,34 @@ test('sul filesystem, esattamente come lo compone un\'onda', () => {
     fs.rmSync(sandbox, { recursive: true, force: true });
   }
 });
+
+test('export { f }: una firma cambiata non resta muta', () => {
+  /*
+   * Era il buco piu' importante, perche' coincideva con lo scenario che motiva tutto il
+   * meccanismo — "A cambia la firma di `send`, B la chiama". Il nome veniva registrato con firma
+   * vuota, quindi prima e dopo la superficie diceva `send -> ''` e il confronto non vedeva nulla.
+   * Dieci moduli di ISL stesso esportano con la lista.
+   */
+  const prima = 'function send(url, body) { return 1; }\nexport { send };';
+  const dopo = 'function send(url, body, timeoutMs) { return 1; }\nexport { send };';
+  const note = surfaceNotes(prima, dopo);
+  assert.equal(note.length, 1);
+  assert.match(note[0], /firma cambiata/);
+  assert.match(note[0], /timeoutMs/);
+});
+
+test('export { f as g }: la firma si cerca sul nome locale, si riporta quello esposto', () => {
+  const a = 'const fetchIt = (a) => a;\nexport { fetchIt as get };';
+  const b = 'const fetchIt = (a, b) => a;\nexport { fetchIt as get };';
+  const note = surfaceNotes(a, b);
+  assert.equal(note.length, 1);
+  // Chi chiama conosce `get`, non `fetchIt`: il nome nella nota deve essere il suo.
+  assert.match(note[0], /`get\(a, b\)`/);
+});
+
+test('un valore riesportato non ha firma e non inventa differenze', () => {
+  const a = 'const X = 5;\nexport { X };';
+  const b = 'const X = 6;\nexport { X };';
+  // Cambia il valore, non il contratto: nessun chiamante deve essere avvisato.
+  assert.deepEqual(surfaceNotes(a, b), []);
+});
