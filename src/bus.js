@@ -46,6 +46,12 @@ const DURABLE = new Set([
   'iteration.started',
   'iteration.phase',
   'iteration.finished',
+  /*
+   * L'attribuzione di un difetto all'onda che lo ha introdotto è l'unico posto in cui esiste la
+   * risposta a "quale task ha rotto questo". Emetterla senza persisterla la rendeva una notifica
+   * che svaniva: quando l'iterazione fallisce e qualcuno indaga, arriva dopo. Qui sopravvive.
+   */
+  'iteration.wave_defects',
   'impl.task_started',
   'impl.task_finished',
   'impl.tool',
