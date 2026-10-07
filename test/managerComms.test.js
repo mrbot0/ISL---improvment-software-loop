@@ -114,3 +114,44 @@ test('a riposo il contesto dei pari non viene allegato', () => {
   assert.equal(m.brief.peerContext ?? null, null);
   m.stop();
 });
+
+test("entrare in allarme condivide la segnalazione, una volta sola", () => {
+  /*
+   * Misurato prima di questa modifica: su tredici manager due soltanto chiamavano `shareFinding`.
+   * Gli altri cinque che vanno in allarme ne sollevavano dieci in tutto e nessuno li sentiva.
+   *
+   * Il rischio opposto e' peggiore del problema: `shareFinding` scrive in memoria condivisa, e
+   * quella finisce nei prompt degli agenti, dove le righe sono poche e contate. Un allarme che
+   * lampeggia non deve ripetersi.
+   */
+  const m = new Finto('Iota');
+  m.start();
+  const condivise = [];
+  m.shareFinding = (kind, title) => condivise.push({ kind, title });
+
+  m.setBrief({ status: 'alert', headline: 'la suite fallisce' });
+  assert.equal(condivise.length, 1, "l'ingresso in allarme deve condividere");
+  assert.equal(condivise[0].kind, 'risk');
+
+  // Stesso allarme ripubblicato: niente.
+  m.setBrief({ status: 'alert', headline: 'la suite fallisce' });
+  assert.equal(condivise.length, 1, 'un allarme invariato non deve ripetersi');
+
+  // Rientro e nuovo allarme diverso: si'.
+  m.setBrief({ status: 'ok', headline: 'tutto a posto' });
+  m.setBrief({ status: 'alert', headline: 'il boot fallisce' });
+  assert.equal(condivise.length, 2, 'un allarme NUOVO va condiviso');
+
+  m.stop();
+});
+
+test('passare a uno stato non di allarme non condivide nulla', () => {
+  const m = new Finto('Kappa');
+  m.start();
+  const condivise = [];
+  m.shareFinding = () => condivise.push(1);
+  m.setBrief({ status: 'ok', headline: 'tutto bene' });
+  m.setBrief({ status: 'acting', headline: 'sto riparando' });
+  assert.equal(condivise.length, 0);
+  m.stop();
+});

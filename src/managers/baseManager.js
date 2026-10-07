@@ -40,6 +40,8 @@ export class BaseManager {
     // Posta in arrivo: capienza fissa, i piu' vecchi cadono. Vedi inbox().
     this._inbox = [];
     this._inboxMax = 20;
+    // Ultimo titolo gia condiviso: un allarme che lampeggia non deve ripetersi nei prompt.
+    this._lastShared = null;
     this.log = log.for(`manager:${name}`);
   }
 
@@ -151,9 +153,36 @@ export class BaseManager {
     }
   }
 
+  /**
+   * UN ALLARME È GIÀ UNA SEGNALAZIONE.
+   *
+   * Misurato: su tredici manager, due soltanto chiamavano `shareFinding`. Gli altri cinque che
+   * vanno in allarme ne sollevavano dieci in tutto, e nessuno li sentiva — restavano un colore
+   * nella dashboard. Il canale funzionava; semplicemente quasi nessuno lo usava.
+   *
+   * Scrivere a mano una chiamata a ogni punto d'allarme è il rimedio fragile: dieci punti oggi,
+   * e il prossimo manager che qualcuno aggiunge ricomincia da zero — è esattamente come la posta
+   * in arrivo era collegata da un manager su tredici. Quindi lo fa la classe base.
+   *
+   * Due condizioni, perché il costo di sbagliare qui è alto: `shareFinding` scrive in memoria
+   * condivisa, e la memoria condivisa finisce nei prompt degli agenti, dove le righe sono poche
+   * e contate.
+   *   - solo sulla TRANSIZIONE verso l'allarme, non a ogni pubblicazione;
+   *   - solo se il titolo è cambiato, così un allarme che lampeggia non ripete se stesso.
+   */
   setBrief(patch) {
+    const prima = this.brief.status;
+    const titoloPrima = this.brief.headline;
     Object.assign(this.brief, patch);
     this.brief.lastEventAt = Date.now();
+
+    const entraInAllarme = this.brief.status === 'alert' && prima !== 'alert';
+    const titoloNuovo = this.brief.headline && this.brief.headline !== titoloPrima;
+    if (entraInAllarme && titoloNuovo && this.brief.headline !== this._lastShared) {
+      this._lastShared = this.brief.headline;
+      this.shareFinding('risk', this.brief.headline, this.brief.recommendations?.[0] || this.brief.summary || '');
+    }
+
     this._publish();
   }
 
