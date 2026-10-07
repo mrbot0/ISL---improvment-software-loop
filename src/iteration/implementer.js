@@ -6,6 +6,7 @@ import { IMPLEMENTER_MAX_STEPS, TOOL_HISTORY_BUDGET, modelFor } from '../config.
 import { taskWorkingContext } from '../context/contextAgent.js';
 import { briefingFor } from '../context/fleetBriefing.js';
 import { unusedCreatedFiles } from './deadCode.js';
+import { stripNonCode } from './staticAnalysis.js';
 import { blastRadiusBlurb } from './blastRadius.js';
 import { similarChanges } from '../context/knowledgeIndex.js';
 import { memoryBlurb } from '../memory/memoryDb.js';
@@ -164,6 +165,159 @@ function repairBrief(repair) {
     .join('\n');
 }
 
+/* ------------------------------------------------------------------------------------------------
+ * COSA È REALMENTE CAMBIATO — e chi lo deve sapere.
+ *
+ * Ogni task riceve `siblings`: cosa gli altri agenti hanno l'INCARICO di fare, preso dal piano. Non
+ * riceve nulla su cosa hanno FATTO. Ma un task che gira dopo un altro — nell'onda seguente, oppure
+ * subito dopo nello stesso sandbox — lavora SOPRA quel codice: i file sono già stati riscritti
+ * sotto i suoi piedi. Finché nessuno glielo dice, chiama in buona fede una funzione che il task
+ * prima ha rinominato: i due non collidono su nessun file, passano entrambi i propri test, e la
+ * combinazione è rotta. È l'unico difetto che la garanzia "nessun altro task ha dichiarato questi
+ * file" non copre, perché riguarda il SIGNIFICATO del codice, non la spartizione dei file.
+ *
+ * La superficie pubblica si ricava con `stripNonCode` di staticAnalysis.js, non con un parser
+ * nuovo: un secondo analizzatore divergerebbe dal primo alla prima riga di codice insolita, e due
+ * analizzatori che non concordano sono peggio di nessuno.
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Le estensioni per cui la superficie pubblica ha senso; per le altre si riporta solo il file. */
+const CODE_FILE = /\.(?:js|jsx|mjs|cjs|ts|tsx)$/i;
+
+/** Il contenuto di un file nel sandbox, o `null` se non c'è — cancellato, o non ancora creato. */
+export function readSource(root, rel) {
+  try {
+    return fs.readFileSync(path.join(root, rel), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Una firma normalizzata e accorciata: serve a CONFRONTARE due versioni, non a riprodurle.
+ *
+ * Normalizzata perché le differenze che non sono differenze sono il modo più rapido di rendere
+ * inutile un resoconto: spezzare i parametri su più righe, o lasciare la virgola finale che un
+ * formattatore aggiunge, non cambia il contratto per nessun chiamante. Segnalarlo come "firma
+ * cambiata" insegna a un agente a non leggere queste righe.
+ */
+const signature = (params) => {
+  const s = String(params)
+    .replace(/\s+/g, ' ')
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/,\s*$/, '')
+    .trim();
+  return `(${s.length > 60 ? `${s.slice(0, 57)}…` : s})`;
+};
+
+const nameList = (names) =>
+  names.slice(0, 3).map((n) => `\`${n}\``).join(', ') + (names.length > 3 ? ` (+${names.length - 3})` : '');
+
+/**
+ * La superficie pubblica di un modulo: nome esportato → firma (`(a, b)` per una funzione, `''` per
+ * un valore). Costruita sul codice già spogliato di commenti e stringhe, così la parola `export`
+ * dentro un commento o un template literal non conta come export.
+ */
+export function exportSurface(src) {
+  if (src == null) return null;
+  const code = stripNonCode(src);
+  const surface = new Map();
+  const put = (name, sig) => {
+    if (/^[A-Za-z_$][\w$]*$/.test(name) && !surface.has(name)) surface.set(name, sig);
+  };
+  // L'ordine conta: il primo riconoscimento di un nome vince, e le forme che hanno una firma vanno
+  // prima di quella generica, altrimenti ogni funzione esportata risulterebbe un valore.
+  for (const m of code.matchAll(/\bexport\s+(?:default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g)) put(m[1], signature(m[2]));
+  for (const m of code.matchAll(/\bexport\s+(?:default\s+)?class\s+([A-Za-z_$][\w$]*)/g)) put(m[1], '');
+  for (const m of code.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\s*\*?\s*[\w$]*\s*)?\(([^)]*)\)\s*(?:=>|\{)/g)) put(m[1], signature(m[2]));
+  for (const m of code.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?([A-Za-z_$][\w$]*)\s*=>/g)) put(m[1], signature(m[2]));
+  for (const m of code.matchAll(/\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) put(m[1], '');
+  for (const m of code.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
+    for (const part of m[1].split(',')) put((part.split(/\s+as\s+/).pop() || '').trim(), '');
+  }
+  return surface;
+}
+
+/**
+ * Il delta fra due versioni dello stesso file, detto come lo vedrebbe un chiamante. Corto per
+ * costruzione: finisce in un prompt, dove le righe sono poche e contate — "rimossa l'export
+ * `formatDate`, aggiunta `formatDateTime`" è quanto serve, un diff no.
+ */
+export function surfaceNotes(beforeSrc, afterSrc) {
+  const after = exportSurface(afterSrc);
+  if (!after) return ['file rimosso'];
+  const before = exportSurface(beforeSrc);
+  if (!before) {
+    const names = [...after.keys()];
+    return [names.length ? `nuovo file, esporta ${nameList(names)}` : 'nuovo file'];
+  }
+  const gone = [...before.keys()].filter((n) => !after.has(n));
+  const added = [...after.keys()].filter((n) => !before.has(n));
+  const resigned = [...after.keys()].filter((n) => before.has(n) && before.get(n) !== after.get(n));
+  const notes = [];
+  if (gone.length) notes.push(`rimossa l'export ${nameList(gone)}`);
+  if (added.length) notes.push(`aggiunta l'export ${nameList(added)}`);
+  for (const n of resigned.slice(0, 2)) notes.push(`firma cambiata: \`${n}${after.get(n)}\``);
+  return notes;
+}
+
+/**
+ * La riga di resoconto di un task finito, per i task che verranno dopo.
+ *
+ * `before(rel)` dà il contenuto di prima, `null` se il file non esisteva, `undefined` se non lo
+ * sappiamo — e in quel caso si riporta solo il nome del file: una firma inventata è peggio del
+ * silenzio, perché un agente le crede.
+ */
+export function changeNote({ task, files = [], before, after, maxFiles = 4 }) {
+  if (!files.length) return null;
+  const parts = [];
+  for (const rel of files.slice(0, maxFiles)) {
+    const pre = before?.(rel);
+    if (!CODE_FILE.test(rel) || pre === undefined) {
+      parts.push(rel);
+      continue;
+    }
+    /*
+     * IL SILENZIO NON È UNA RASSICURAZIONE.
+     *
+     * `surfaceNotes` riconosce le forme `export function f(…)` e `export const f = (…) =>`, non la
+     * lista `export { f }` né la sintassi TypeScript. Su quei file restituisce [] — e un elenco
+     * vuoto, accanto a un file che compare fra quelli CAMBIATI, un agente lo legge come "la
+     * superficie pubblica non è cambiata". È la lettura opposta a quella vera, ed è esattamente
+     * ciò che questo resoconto esiste per evitare.
+     *
+     * Finché l'analisi non copre quelle forme, lo dichiara: "superficie non analizzabile" manda
+     * l'agente ad aprire il file, mentre il nome nudo lo convince di non doverlo fare.
+     */
+    const notes = surfaceNotes(pre, after?.(rel) ?? null);
+    if (notes.length) {
+      parts.push(`${rel}: ${notes.join('; ')}`);
+    } else {
+      const analizzabile = /\.(?:js|jsx|mjs|cjs)$/i.test(rel)
+        && !/^\s*export\s*\{/m.test(pre || '');
+      parts.push(analizzabile ? rel : `${rel} (cambiato — superficie non analizzabile, apri il file)`);
+    }
+  }
+  const rest = files.length - maxFiles;
+  if (rest > 0) parts.push(`+${rest} ${rest === 1 ? 'altro file' : 'altri file'}`);
+  return `- [${task?.agent || 'agent'}] ${task?.title || 'task'} → ${parts.join(' · ')}`;
+}
+
+/** Il blocco di prompt che porta quel resoconto sotto gli occhi dell'agente. */
+function priorWorkBlurb(priorWork) {
+  const body = (Array.isArray(priorWork) ? priorWork : String(priorWork || '').split('\n')).filter(Boolean);
+  if (!body.length) return null;
+  return [
+    'GIÀ CAMBIATO IN QUESTA ITERAZIONE — il codice che hai sotto mano è già stato modificato da',
+    'altri agenti in questa stessa iterazione, quindi non è più quello del branch:',
+    // Le ultime otto, non le prime otto: le righe recenti sono quelle che descrivono il codice
+    // che questo task ha davvero sotto mano, e un prompt ha poche righe da spendere.
+    ...body.slice(-8),
+    'Se chiami o tocchi uno di questi simboli, verifica la firma ATTUALE con read_file prima di' +
+      ' editare: un richiamo alla versione vecchia compila, passa i test del tuo file e rompe la combinazione.',
+  ].join('\n');
+}
+
 const isTestPath = (p) => /(^|\/)__tests__\//.test(p) || /\.(test|spec)\.[jt]sx?$/.test(p);
 
 /** The conventional test-file path beside a source file: lib/crypto.js → lib/__tests__/crypto.test.js. */
@@ -258,8 +412,12 @@ function preloadFiles(sandboxRoot, files, symbols) {
  *
  * `repair` turns this into a second attempt: the sandbox already contains the
  * previous attempt's edits, and the model is told exactly how they failed.
+ *
+ * `priorWork` sono le righe di resoconto (vedi `changeNote`) dei task già finiti in questa
+ * iterazione: non cosa dovevano fare, ma cosa hanno cambiato davvero nei file che questo sandbox
+ * contiene adesso.
  */
-export async function runTask(sandboxRoot, task, { iterationId, signal, repair = null, iterationBrief = null, siblings = [] } = {}) {
+export async function runTask(sandboxRoot, task, { iterationId, signal, repair = null, iterationBrief = null, siblings = [], priorWork = null } = {}) {
   const { handlers, touched, created } = makeImplementerTools(sandboxRoot);
   const persona = PERSONAS[task.agent] || null;
   const brief = repairBrief(repair);
@@ -311,6 +469,9 @@ export async function runTask(sandboxRoot, task, { iterationId, signal, repair =
   // area's cautions, and what every peer task is doing in parallel — so the agent
   // always knows what it (and the rest of the fleet) is doing.
   const workingContext = taskWorkingContext({ agent: task.agent, area: task.area, task, iterationBrief, siblings });
+  // Accanto al contesto di lavoro, perché è la metà che mancava: `siblings` dice cosa gli altri
+  // hanno l'incarico di fare, questo dice cosa hanno già fatto al codice in questo sandbox.
+  const alreadyChanged = priorWorkBlurb(priorWork);
   // The rules that apply to the files this task declared. The working context says what the fleet
   // is doing; this says what the change is not allowed to break.
   const rules = briefingFor('implementer', { files: task.files || [], area: task.area, includeSituation: false });
@@ -326,7 +487,7 @@ export async function runTask(sandboxRoot, task, { iterationId, signal, repair =
     : null;
 
   const messages = [
-    { role: 'system', content: [persona ? `${SYSTEM}\n\n${persona}` : SYSTEM, workingContext, rules, standing, decisionBrief({ agentId: task.agent, area: task.area }), memoryBlurb({ agentId: task.agent, area: task.area })].filter(Boolean).join('\n\n') },
+    { role: 'system', content: [persona ? `${SYSTEM}\n\n${persona}` : SYSTEM, workingContext, alreadyChanged, rules, standing, decisionBrief({ agentId: task.agent, area: task.area }), memoryBlurb({ agentId: task.agent, area: task.area })].filter(Boolean).join('\n\n') },
     {
       role: 'user',
       content: [
@@ -534,11 +695,15 @@ export async function runTask(sandboxRoot, task, { iterationId, signal, repair =
 /**
  * Run every task in the batch, sequentially, against the same sandbox so their
  * changes accumulate into one reviewable iteration.
+ *
+ * Sequenziale non vuol dire informato: il task numero 3 edita un sandbox che i primi due hanno già
+ * riscritto. `landed` è il resoconto di quelle modifiche, e viaggia avanti insieme al codice.
  * @returns {{ results, touched: string[], summary, tokensIn, tokensOut }}
  */
 export async function implementBatch({ sandboxRoot, tasks, iterationId, onProgress, signal, logger = log.for('implementer') }) {
   const results = [];
   const allTouched = new Set();
+  const landed = []; // cosa i task già finiti hanno realmente cambiato in questo sandbox
   let tokensIn = 0;
   let tokensOut = 0;
 
@@ -550,9 +715,13 @@ export async function implementBatch({ sandboxRoot, tasks, iterationId, onProgre
     logger.info?.(`task ${i + 1}/${tasks.length}: ${task.title}`, { runId: iterationId });
 
     const siblings = tasks.filter((_, j) => j !== i).map((t) => ({ agent: t.agent, title: t.title, area: t.area }));
+    // Lo stato dei file dichiarati PRIMA che il task li tocchi. Il sandbox è condiviso con i task
+    // seguenti, quindi dopo l'edit il "prima" non è più recuperabile da nessuna parte.
+    const before = new Map();
+    for (const rel of new Set([...(task.files || []), ...(task.newFiles || [])])) before.set(rel, readSource(sandboxRoot, rel));
     let r;
     try {
-      r = await runTask(sandboxRoot, task, { iterationId, signal, siblings });
+      r = await runTask(sandboxRoot, task, { iterationId, signal, siblings, priorWork: landed });
     } catch (err) {
       if (err.message === 'interrupted') throw err;
       /*
@@ -567,6 +736,13 @@ export async function implementBatch({ sandboxRoot, tasks, iterationId, onProgre
       r = { ok: false, summary: err.message, error: err.message, filesChanged: [], steps: 0, tokensIn: 0, tokensOut: 0 };
     }
     results.push(r);
+    r.note = changeNote({
+      task,
+      files: r.filesChanged,
+      before: (rel) => (before.has(rel) ? before.get(rel) : undefined),
+      after: (rel) => readSource(sandboxRoot, rel),
+    });
+    if (r.ok && r.note) landed.push(r.note);
     r.filesChanged.forEach((f) => allTouched.add(f));
     tokensIn += r.tokensIn;
     tokensOut += r.tokensOut;

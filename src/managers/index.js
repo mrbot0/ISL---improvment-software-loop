@@ -21,12 +21,120 @@ function debounced(fn, ms = 400) {
   };
 }
 
+/** Una riga di un pari, tagliata: il brief lo leggono una dashboard e un prompt. */
+const short = (s, n = 120) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s || '');
+
+/* ──────────── Coordinamento: leggere i pari prima di concludere ──────────── */
+/*
+ * `BaseManager` offre due canali e nessuno dei tredici manager li usava: `inbox()`, i messaggi
+ * ricevuti dai pari, e `brief.peerContext`, chi altro è in allarme. Ogni `analyze()` ricalcolava
+ * solo la propria vista e concludeva da solo — compresi i due manager che una domanda diretta
+ * l'avevano già mandata, e non hanno mai letto la risposta perché nessuno la scriveva.
+ *
+ * Le letture che cambiano DAVVERO una conclusione stanno qui sotto, in un posto solo, perché la
+ * regola con cui si leggono i due canali è la stessa per tutti:
+ *
+ *   LO STATO DECIDE, LA POSTA DETTAGLIA.
+ *
+ * I due canali non hanno la stessa affidabilità, e scambiarli è il modo di sbagliare qui.
+ * `peerConcerns()`/`peerContext` leggono lo stato CORRENTE dei brief: quando un pari rientra
+ * dall'allarme smette di comparire. La posta invece conserva i messaggi finché la coda (venti
+ * posti) non li spinge fuori, e nessuno manda mai un "tutto a posto": un `blocker` di mezz'ora fa
+ * resterebbe lì a zittire l'allarme di un altro manager molto dopo che il blocco è stato risolto.
+ * Quindi un pari conta solo se è in allarme ADESSO, e la posta serve per i dati che il brief non
+ * porta — il `detail` di uno `shareFinding`, lo `streak` di Operations, la risposta a una domanda.
+ */
+
+/**
+ * Chi è in allarme fra i pari, ADESSO.
+ *
+ * Qui si legge `peerConcerns()` in diretta e NON `brief.peerContext`, che sembrerebbe la scelta
+ * ovvia perché è già calcolato e risparmia una query. Misurato: non si può usare per decidere, per
+ * due ragioni che si sommano proprio nel momento che conta.
+ *
+ *   - Lo allega `_publish()`, che gira in fondo a `setBrief()`: durante `analyze()` il valore è
+ *     quello dell'ultima pubblicazione, cioè di PRIMA. Un pari che è appena entrato in allarme non
+ *     c'è, e si vedrebbe solo al giro dopo.
+ *   - Lo allega solo quando questo manager è già in `alert` o `acting`. Alla prima transizione
+ *     verso l'allarme — l'unica volta in cui serve sapere cos'altro sta andando male — è nullo.
+ *
+ * Non è teoria: la prima versione di questo file lo preferiva, e il test che controlla la guardia
+ * di Insights è fallito perché un `peerContext` rimasto dal giro precedente nascondeva un blocco
+ * appena comparso. `peerContext` resta ciò per cui è stato scritto — una vista pubblicata, per la
+ * dashboard e per il prompt del planner — e una vista pubblicata non è una fonte su cui decidere.
+ *
+ * La query in più è trascurabile dove viene chiamata: questi `analyze()` fanno già `computeMetrics()`
+ * e `listProposals({ limit: 300 })`.
+ */
+export function peerAlerts(mgr) {
+  try {
+    return mgr.peerConcerns() || [];
+  } catch {
+    return [];
+  }
+}
+
+/** L'ultimo messaggio di un pari, per tipo: la posta è in ordine di arrivo, quindi l'ultimo è il più recente. */
+function lastFrom(mgr, from, kind, match = null) {
+  try {
+    const items = mgr.inbox({ kind, limit: 8 }).filter((m) => m.from === from && (!match || match(m)));
+    return items.length ? items[items.length - 1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * IL BLOCCO CHE RENDE INSIGNIFICANTI LE MISURE DI TUTTI GLI ALTRI.
+ *
+ * Solo Workbench, di proposito: è l'unico manager che risponde alla domanda "l'applicazione
+ * parte?", e la risposta "no" cambia il significato di ogni altra misura — un tasso di verifica che
+ * crolla su un albero che non si avvia non dice niente sulla qualità di chi ha scritto il diff. Un
+ * allarme di Risk o di Services, invece, resta vero indipendentemente dallo stato degli altri:
+ * una proposta critica va rivista comunque, un retry non idempotente è un rischio comunque.
+ *
+ * `status === 'alert'` e non `'acting'`: Workbench in `acting` vuol dire che il boot è stato
+ * riparato, cioè l'opposto di un blocco.
+ */
+export function bootBlocker(mgr) {
+  const vivo = peerAlerts(mgr).find((p) => p && p.name === 'Workbench' && p.status === 'alert');
+  if (!vivo) return null;
+  const posta = lastFrom(mgr, 'Workbench', 'blocker');
+  return {
+    from: 'Workbench',
+    headline: vivo.headline || 'the application does not start',
+    detail: posta?.payload?.detail || vivo.recommendation || '',
+  };
+}
+
+/**
+ * Iterazioni che falliscono in serie: il lavoro parte e non arriva.
+ *
+ * Due condizioni, perché Operations va in allarme per due ragioni diverse — serie di fallimenti e
+ * contropressione — e il brief non le distingue: deve essere in allarme ADESSO, e la serie deve
+ * essere stata annunciata, perché il numero sta solo nella posta.
+ *
+ * Resta un caso ambiguo: Operations in allarme per contropressione con un vecchio messaggio di
+ * serie ancora in coda. Non può ingannare l'unico chiamante, che richiede zero proposte, perché la
+ * contropressione significa esattamente che le proposte ci sono e sono in attesa di revisione.
+ */
+export function failureStreak(mgr) {
+  const vivo = peerAlerts(mgr).find((p) => p && p.name === 'Operations' && p.status === 'alert');
+  if (!vivo) return null;
+  const posta = lastFrom(mgr, 'Operations', 'decision', (msg) => msg.payload?.action === 'error_streak');
+  if (!posta) return null;
+  return { from: 'Operations', headline: vivo.headline || '', streak: Number(posta.payload.streak) || null };
+}
+
 /* ─────────────────────────── Quality ──────────────────────────────────── */
 // Owns verification and review health: are proposals passing checks, and are
 // they good enough that you approve them?
 class QualityManager extends BaseManager {
   constructor() {
     super('Quality', { icon: '🛡', accent: 'emerald', role: 'Verification, review & iteration quality' });
+    // Ultima domanda mandata a Insights, e quando. Vedi `_chiediAInsights`.
+    this._askedRate = null;
+    this._askedAt = 0;
     const recompute = debounced(() => this.analyze());
     for (const e of ['verify.finished', 'proposal.approved', 'proposal.rejected', 'proposal.applied', 'agent.finished', 'iteration.finished']) {
       this.on(e, recompute);
@@ -47,16 +155,55 @@ class QualityManager extends BaseManager {
 
     let status = 'watching';
     let headline = `Pass rate ${passRate ?? '—'}%, ${applied} landed${avgScore != null ? ` · avg iteration ${avgScore}/100` : ''}.`;
+    const recommendations = [];
     if (avgScore != null && avgScore < 60 && iters.length >= 3) {
       status = 'alert';
       headline = `Iteration quality low (avg ${avgScore}/100, ${rolledBack} rolled back) — the model is producing weak changes.`;
     } else if (passRate !== null && passRate < 50 && passed + failed >= 4) {
-      status = 'alert';
-      headline = `Only ${passRate}% of proposals pass verification — agents are producing broken changes.`;
-      this.send('Insights', 'request', { ask: 'agents_failing_verification', passRate }, {
-        severity: 'warn',
-        title: 'Low verification pass rate — check which agents are failing',
-      });
+      /*
+       * "I TEST FALLISCONO" NON VUOL DIRE NIENTE SE NON SI SA SE L'APPLICAZIONE PARTE.
+       *
+       * Questa riga diceva "agents are producing broken changes", e la diceva anche quando
+       * Workbench stava segnalando, nel brief accanto, che l'applicazione non si avvia affatto.
+       * Finiva nel planner attraverso `managerConcerns()`, che passa i soli brief in allarme: la
+       * conclusione sbagliata non restava sulla dashboard, viaggiava fino alla scelta del lavoro
+       * successivo, e portava a stringere gli obiettivi degli agenti per un difetto che non era
+       * loro.
+       *
+       * Con un blocco a monte questo manager non deve gridare: deve dire che aspetta. Non è una
+       * sfumatura di prosa — `status` passa da `alert` a `watching`, e `watching` significa che la
+       * riga NON entra nel prompt del planner e che la classe base non la scrive in memoria
+       * condivisa come pitfall durevole.
+       */
+      const blocco = bootBlocker(this);
+      if (blocco) {
+        status = 'watching';
+        headline =
+          `Pass rate ${passRate}%, but ${blocco.from} reports the application does not start — ` +
+          `verification is failing on a tree that does not run. Waiting for startup before judging the agents.`;
+        recommendations.push(`Do not re-tune the agents on this number — fix startup first: ${short(blocco.detail || blocco.headline, 140)}`);
+      } else {
+        status = 'alert';
+        headline = `Only ${passRate}% of proposals pass verification — agents are producing broken changes.`;
+        /*
+         * La risposta alla domanda che questo manager ha già fatto. Prima la mandava e tirava
+         * avanti: "gli agenti producono cambiamenti rotti" è vero e inutile, perché non dice a
+         * chi stringere l'obiettivo. Insights sa quale agente concentra i fallimenti; ora lo
+         * dice, e quel nome entra nella raccomandazione che il planner legge.
+         *
+         * Solo la raccomandazione, non lo stato: una risposta vecchia di qualche minuto resta
+         * utile come indicazione, ma non deve poter ribaltare una decisione.
+         */
+        const risposta = lastFrom(this, 'Insights', 'answer', (msg) => msg.payload?.ask === 'agents_failing_verification');
+        const colpevoli = Array.isArray(risposta?.payload?.agents) ? risposta.payload.agents : [];
+        if (colpevoli.length) {
+          headline =
+            `Only ${passRate}% of proposals pass verification — it concentrates in ` +
+            `${colpevoli.map((a) => `${a.agent} (${a.failed})`).join(', ')}.`;
+          recommendations.push(`Insights answered: narrow ${colpevoli[0].agent}'s objective first — it accounts for ${colpevoli[0].failed} of the failed verifications.`);
+        }
+        this._chiediAInsights(passRate);
+      }
     } else if (approvalRate !== null && approvalRate < 25 && decided >= 4) {
       status = 'watching';
       headline = `${approvalRate}% approval rate — proposals verify but you reject most of them.`;
@@ -64,10 +211,27 @@ class QualityManager extends BaseManager {
       status = 'idle';
       headline = `Healthy: ${passRate}% verification pass rate, ${applied} landed.`;
     }
-    const recommendations = [];
     if (approvalRate !== null && approvalRate < 25 && decided >= 4)
       recommendations.push('Approval rate is low — consider tightening agent objectives so they propose less speculative changes.');
     this.setBrief({ status, headline, stats, recommendations });
+  }
+
+  /**
+   * La domanda a Insights, una volta per situazione.
+   *
+   * Era dentro `analyze()` senza guardia, e `analyze()` gira a ogni evento di verifica: finché il
+   * tasso restava basso, la stessa domanda veniva rimandata a ogni passata. Finora non si vedeva,
+   * perché nessuno apriva la posta; ora che Insights la legge, la coda ha venti posti e venti copie
+   * della stessa domanda butterebbero fuori tutto il resto — compresa la risposta.
+   */
+  _chiediAInsights(passRate) {
+    if (this._askedRate === passRate && Date.now() - this._askedAt < 5 * 60_000) return;
+    this._askedRate = passRate;
+    this._askedAt = Date.now();
+    this.send('Insights', 'request', { ask: 'agents_failing_verification', passRate }, {
+      severity: 'warn',
+      title: 'Low verification pass rate — check which agents are failing',
+    });
   }
 }
 
@@ -97,11 +261,33 @@ class ThroughputManager extends BaseManager {
     let headline = `${m.totals.proposals} proposals across ${m.runs.total} runs · ${perRun}/run · avg ${stats.avgRunSec}s.`;
     if (m.runs.total >= 3 && m.totals.proposals === 0) {
       status = 'alert';
-      headline = `${m.runs.total} runs, zero proposals — agents are exploring but never committing.`;
-      this.send('Insights', 'report', { reason: 'no_output', runs: m.runs.total }, {
-        severity: 'warn',
-        title: 'Agents produce no proposals — objectives may be too narrow',
-      });
+      /*
+       * ZERO PROPOSTE È UN FATTO; "GLI OBIETTIVI SONO TROPPO STRETTI" È UNA DIAGNOSI.
+       *
+       * La diagnosi partiva comunque, e nel titolo del messaggio a Insights c'era già scritto
+       * cosa fare: allargare gli obiettivi. Quando l'applicazione non si avvia, o quando le
+       * iterazioni stanno fallendo in serie, zero proposte è la CONSEGUENZA di quel blocco, e
+       * allargare gli obiettivi peggiora la situazione — manda gli agenti a toccare più superficie
+       * su una base che non regge.
+       *
+       * L'allarme resta anche sotto un blocco, al contrario di Quality e Director qui sotto, e la
+       * differenza è voluta: "tre run non hanno prodotto niente" non è la stessa cosa che "non
+       * parte", è quanto budget di run il blocco sta bruciando — un fatto in più, non una copia.
+       * Cambia la causa dichiarata, che è la riga che il planner legge, e cade la richiesta
+       * sbagliata.
+       */
+      const aMonte = bootBlocker(this) || failureStreak(this);
+      if (aMonte) {
+        headline =
+          `${m.runs.total} runs, zero proposals. ${aMonte.from} says why: “${short(aMonte.headline, 110)}” — ` +
+          `the cause is upstream of velocity, not in the objectives.`;
+      } else {
+        headline = `${m.runs.total} runs, zero proposals — agents are exploring but never committing.`;
+        this.send('Insights', 'report', { reason: 'no_output', runs: m.runs.total }, {
+          severity: 'warn',
+          title: 'Agents produce no proposals — objectives may be too narrow',
+        });
+      }
     } else if (stats.avgRunSec > 600) {
       status = 'watching';
       headline = `Runs are slow (avg ${stats.avgRunSec}s) — the model is CPU-bound. ${m.totals.proposals} proposals so far.`;
@@ -181,6 +367,7 @@ class RiskManager extends BaseManager {
 class InsightsManager extends BaseManager {
   constructor() {
     super('Insights', { icon: '🔭', accent: 'sky', role: 'Effectiveness & focus' });
+    this._lastAnswer = { key: null, at: 0 }; // l'ultima risposta mandata a Quality, e quando
     const recompute = debounced(() => this.analyze());
     for (const e of ['proposal.created', 'proposal.approved', 'proposal.rejected', 'agent.finished', 'manager.message']) this.on(e, recompute);
   }
@@ -213,15 +400,97 @@ class InsightsManager extends BaseManager {
       ranked: ranked.map((a) => ({ id: a.agentId, proposals: a.proposals, applied: a.applied, effectiveness: a.effectiveness })),
     };
     const recommendations = [];
-    if (worst && worst.effectiveness < 20)
-      recommendations.push(`The ${worst.agentId} agent's proposals are almost always rejected — refine its objective or disable it.`);
+    // Letto una volta per passata e usato due volte sotto. Gli altri manager lo leggono dentro il
+    // ramo che serve; qui serve in due punti distanti, e una SELECT su tredici righe non si nota
+    // accanto al `computeMetrics()` e alle trecento proposte già caricate qui sopra.
+    const blocco = bootBlocker(this);
+
+    if (worst && worst.effectiveness < 20) {
+      if (blocco) {
+        /*
+         * NON SI SPEGNE UN AGENTE SUI NUMERI RACCOLTI MENTRE LA BASE ERA ROTTA.
+         *
+         * "refine its objective or disable it" era la raccomandazione, e la calcolava sul tasso di
+         * proposte respinte senza sapere in che stato fosse il sistema che le respingeva. Mentre
+         * l'applicazione non si avvia ogni agente perde, e "quasi sempre respinto" non distingue
+         * uno specialista debole da uno che ha lavorato su un albero che non partiva. È il tipo di
+         * errore che non si corregge da sé: un agente disabilitato resta disabilitato, e la
+         * decisione sarebbe stata presa su un dato temporaneo.
+         */
+        recommendations.push(
+          `${worst.agentId} lands almost nothing (${worst.effectiveness}%), but ${blocco.from} reports the application does not start — ` +
+            `these rankings are confounded until startup is fixed. Not a reason to disable anything yet.`,
+        );
+      } else {
+        recommendations.push(`The ${worst.agentId} agent's proposals are almost always rejected — refine its objective or disable it.`);
+      }
+    }
     if (hotFiles[0]?.n >= 3)
       recommendations.push(`${hotFiles[0].path} attracts the most proposals — it may be a genuine hotspot worth a focused pass.`);
 
-    const headline = best
+    let status = 'watching';
+    let headline = best
       ? `${best.agentId} is most effective (${best.effectiveness}% landed). ${hotFiles.length} hotspot file(s) identified.`
       : 'Gathering data — no decided proposals yet to rank agents by.';
-    this.setBrief({ status: 'watching', headline, stats, recommendations });
+
+    /*
+     * RISPONDERE A CHI HA CHIESTO.
+     *
+     * Questo manager era iscritto a `manager.message` e usava l'evento come campanello: richiamava
+     * questa analisi senza mai aprire il payload. Quality gli chiede, per nome, "quali agenti
+     * falliscono la verifica" — una domanda a cui questo è l'unico manager che può rispondere,
+     * perché è l'unico che tiene la vista per agente — e la risposta era la stessa classifica di
+     * sempre, calcolata come se nessuno avesse chiesto niente.
+     *
+     * La domanda è sui FALLIMENTI DI VERIFICA, che non sono le proposte respinte: `byAgent` porta
+     * `applied`/`rejected`, non `failed`. Il conto si fa sulle proposte già in memoria qui sopra.
+     */
+    const domanda = lastFrom(this, 'Quality', 'request', (msg) => msg.payload?.ask === 'agents_failing_verification');
+    if (domanda) {
+      const perAgente = {};
+      for (const p of all) if (p.status === 'failed' && p.agentId) perAgente[p.agentId] = (perAgente[p.agentId] || 0) + 1;
+      const falliscono = Object.entries(perAgente)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([agent, failed]) => ({ agent, failed }));
+      if (falliscono.length) {
+        stats.failingVerification = falliscono.map((a) => `${a.agent} ${a.failed}`).join(', ');
+        headline = `Verification failures concentrate in ${falliscono.map((a) => `${a.agent} (${a.failed})`).join(', ')} — answering Quality.`;
+        recommendations.unshift(`${falliscono[0].agent} accounts for ${falliscono[0].failed} failed verification(s): narrow that objective before touching the others.`);
+        /*
+         * `alert` e non `watching`, di proposito: `managerConcerns()` passa al planner i soli
+         * brief in allarme, quindi una risposta che resta in `watching` non raggiunge nessuna
+         * decisione — è il difetto che questa modifica chiude, non uno da ripetere. La classe base
+         * la condivide una volta sola, sulla transizione e solo se il titolo è cambiato.
+         *
+         * Tranne che sotto un blocco a monte: lì il conto per agente è confuso esattamente come la
+         * classifica qui sopra, quindi la risposta si dà — resta sulla dashboard, dove serve a chi
+         * guarda — ma non si promuove a riga di prompt.
+         */
+        if (!blocco) status = 'alert';
+        this._rispondiAQuality(falliscono);
+      }
+    }
+
+    this.setBrief({ status, headline, stats, recommendations });
+  }
+
+  /**
+   * La risposta a Quality, una volta per contenuto.
+   *
+   * `analyze()` gira a ogni messaggio sul bus — compresi i propri — quindi una `send` senza guardia
+   * riempirebbe la posta di Quality di copie identiche, venti posti, e butterebbe fuori tutto il
+   * resto. Si rimanda solo se il contenuto è cambiato, o dopo cinque minuti perché il destinatario
+   * possa perderla e ritrovarla.
+   */
+  _rispondiAQuality(falliscono) {
+    const chiave = falliscono.map((a) => `${a.agent}:${a.failed}`).join('|');
+    if (this._lastAnswer.key === chiave && Date.now() - this._lastAnswer.at < 5 * 60_000) return;
+    this._lastAnswer = { key: chiave, at: Date.now() };
+    this.send('Quality', 'answer', { ask: 'agents_failing_verification', agents: falliscono }, {
+      severity: 'info',
+      title: `Insights: verification failures concentrate in ${falliscono[0].agent}`,
+    });
   }
 }
 
@@ -566,6 +835,33 @@ class DirectorManager extends BaseManager {
     if (bySev.critical.length) return { kind: 'review', headline: `Review the ${bySev.critical.length} CRITICAL proposal(s) awaiting you`, owner: null, criticality: 'critical' };
     if (bySev.high.length >= 3) return { kind: 'review', headline: `${bySev.high.length} high-severity proposals need review`, owner: null, criticality: 'high' };
 
+    /*
+     * 1b. UN BLOCCO A MONTE BATTE QUALUNQUE MIGLIORAMENTO.
+     *
+     * Questo è il solo manager che AGISCE da qui: poche righe sotto, `controller.runAgent(owner)`
+     * manda davvero uno specialista a lavorare. E ci mandava chiunque, anche quando Workbench
+     * stava segnalando che l'applicazione non si avvia: "rinforza la superficie security" su un
+     * albero che non parte produce un diff che non si può nemmeno verificare — un worktree nuovo,
+     * una chiamata al modello, e un risultato buttato — e il rischio vero è che quel diff venga
+     * giudicato sui fallimenti del blocco invece che sul proprio merito.
+     *
+     * Le due diramazioni sopra restituiscono già `owner: null`, quindi non dispacciano: ciò che
+     * questo controllo deve precedere è il passo 2, il dispatch speculativo. `owner: null` qui non
+     * è un dettaglio di forma, è esattamente ciò che impedisce la partenza.
+     *
+     * Non dispaccia nessuno a riparare il boot perché non serve: l'agente workbench ripara già da
+     * sé (Workbench conta le riparazioni in `healed`). Il valore è non aggiungere lavoro al blocco.
+     */
+    const blocco = bootBlocker(this);
+    if (blocco) {
+      return {
+        kind: 'unblock',
+        headline: `Get the application starting again — ${short(blocco.detail || blocco.headline, 90)}`,
+        owner: null,
+        criticality: 'critical',
+      };
+    }
+
     // 2. Otherwise the critical task is to strengthen the weakest domain.
     const m = computeMetrics();
     const ranked = m.byAgent
@@ -591,6 +887,18 @@ class DirectorManager extends BaseManager {
     let status = crit.criticality === 'critical' ? 'alert' : 'watching';
     let headline = `Critical task: ${crit.headline}.`;
     const recommendations = [];
+
+    /*
+     * Il blocco è critico, ma l'allarme non è di questo manager: è già di Workbench. `setBrief`
+     * condivide ogni allarme NUOVO in memoria condivisa, e la memoria condivisa finisce nei prompt
+     * degli agenti, dove le righe sono contate: due righe che dicono "l'applicazione non parte"
+     * costano una riga a chi legge e non aggiungono niente. La criticità resta negli `stats`, dove
+     * la dashboard la mostra.
+     */
+    if (crit.kind === 'unblock') {
+      status = 'watching';
+      recommendations.push('Nothing is being dispatched while the application does not start: a change built on a tree that does not run cannot be verified.');
+    }
 
     // Active dispatch: when the loop is idle and the critical task is a review pass a
     // specific specialist owns, send that specialist in — throttled so we never thrash.
