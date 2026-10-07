@@ -1,80 +1,80 @@
 ---
-name: Segnalazione di un difetto
-about: Qualcosa in ISL non si comporta come dovrebbe
+name: Bug report
+about: Something in ISL does not behave the way it should
 title: ''
 labels: bug
 ---
 
 <!--
-  Per una VULNERABILITA' non usare questo template e non aprire una issue pubblica:
-  vedi SECURITY.md (GitHub Security Advisories, canale privato).
+  For a VULNERABILITY, do not use this template and do not open a public issue:
+  see SECURITY.md (GitHub Security Advisories, private channel).
 -->
 
-## Cosa è andato storto
+## What went wrong
 
-<!-- Cosa ti aspettavi e cosa è successo invece. Una o due frasi bastano. -->
+<!-- What you expected, and what happened instead. One or two sentences are enough. -->
 
-## Progetto attivo
+## Active project
 
-- Nome del progetto attivo quando è accaduto:
-- Stack del progetto bersaglio (linguaggi, framework, Prisma sì/no, Docker sì/no):
-- È il progetto `isl-self` (ISL che migliora se stesso)? sì / no
+- Name of the project that was active when it happened:
+- Stack of the target project (languages, frameworks, Prisma yes/no, Docker yes/no):
+- Is it the `isl-self` project (ISL improving itself)? yes / no
 
 <!--
-  Quasi tutto in ISL dipende dal progetto attivo: config, database, agenti, layout rilevato.
-  Lo stesso bug spesso esiste su un progetto e non sull'altro.
+  Almost everything in ISL depends on the active project: config, database, agents, detected layout.
+  The same bug often exists on one project and not on another.
 -->
 
-## Run o iterazione
+## Run or iteration
 
-- Numero del run / dell'iterazione (tab **Runs** o **Iterations**):
-- Verdetto: committed / rolled back / interrotto / mai partito
-- Punteggi, se li vedi (review, tests, security, regression, totale):
-- Qualche gate ha messo un veto? quale, e in che modalità (`off` / `advisory` / `enforce`):
+- Run / iteration number (**Runs** or **Iterations** tab):
+- Verdict: committed / rolled back / aborted / never started
+- Scores, if you can see them (review, tests, security, regression, total):
+- Did a gate veto? which one, and in which mode (`off` / `advisory` / `enforce`):
 
-## Dove
+## Where
 
-<!-- Barra ciò che vale. -->
+<!-- Check whatever applies. -->
 
-- [ ] Dashboard (quale tab: ……)
-- [ ] API / WebSocket (quale rotta: ……)
-- [ ] Autenticazione, sessioni, admin panel
-- [ ] Un agente o un manager (quale: ……)
-- [ ] Motore di iterazione, sandbox, worktree
-- [ ] Un gate deterministico (quale: ……)
-- [ ] Runtime dei container / schema integrity
+- [ ] Dashboard (which tab: ……)
+- [ ] API / WebSocket (which route: ……)
+- [ ] Authentication, sessions, admin panel
+- [ ] An agent or a manager (which one: ……)
+- [ ] Iteration engine, sandbox, worktree
+- [ ] A deterministic gate (which one: ……)
+- [ ] Container runtime / schema integrity
 - [ ] Context Manager, doc agents, knowledge index
-- [ ] Supervisore / avvio / memoria
-- [ ] Altro: ……
+- [ ] Supervisor / startup / memory
+- [ ] Other: ……
 
-## Cosa dicono i log
+## What the logs say
 
 <!--
-  Dove guardare:
-  - tab Logs della dashboard, oppure GET /api/logs?level=error — è il log persistito di ISL
-  - tab Flow: la cronologia degli eventi del run (ora è persistita, sopravvive al reload)
-  - lo stdout di `npm run serve`: ci sono anche i riavvii del supervisore e il memory watchdog
-  - console del browser, se il problema è nella dashboard
-  - `npm run doctor`: dipendenze esterne (node, repo, node_modules, Ollama, sandbox)
-  Incolla le righe pertinenti, non l'intero file, e togli percorsi o nomi che non vuoi pubblicare.
+  Where to look:
+  - the dashboard's Logs tab, or GET /api/logs?level=error — that is ISL's persisted log
+  - the Flow tab: the event history of the run (now persisted, it survives a reload)
+  - the stdout of `npm run serve`: it also carries supervisor restarts and the memory watchdog
+  - the browser console, if the problem is in the dashboard
+  - `npm run doctor`: external dependencies (node, repo, node_modules, Ollama, sandbox)
+  Paste the relevant lines, not the whole file, and strip any paths or names you do not want published.
 -->
 
 ```
-(righe di log)
+(log lines)
 ```
 
-## Riproduzione
+## Reproduction
 
 1.
 2.
 3.
 
-Si riproduce: sempre / a volte / una volta sola
+Reproducible: always / sometimes / only once
 
-## Ambiente
+## Environment
 
-- Commit o versione di ISL:
+- ISL commit or version:
 - `node --version`:
-- Sistema operativo:
-- Modello Ollama (`OLLAMA_MODEL`) e, se rilevante, `OLLAMA_CHAT_MODEL`:
-- Dashboard ricostruita dopo l'ultima modifica (`npm run dashboard:build`)? sì / no
+- Operating system:
+- Ollama model (`OLLAMA_MODEL`) and, if relevant, `OLLAMA_CHAT_MODEL`:
+- Dashboard rebuilt after your last change (`npm run dashboard:build`)? yes / no

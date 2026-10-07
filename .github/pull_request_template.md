@@ -1,25 +1,25 @@
-## Cosa cambia, e perché
+## What changes, and why
 
 <!--
-  Il perché conta più del cosa: il diff dice già quali righe sono cambiate. Se chiude una issue,
-  scrivi "Chiude #N".
+  The why matters more than the what: the diff already says which lines changed. If it closes an
+  issue, write "Closes #N".
 -->
 
-## Tipo
+## Type
 
-- [ ] Correzione di un difetto
-- [ ] Gate deterministico nuovo o modificato
-- [ ] Agente / manager / motore di iterazione
-- [ ] Piattaforma (progetti, auth, admin)
+- [ ] Bug fix
+- [ ] New or modified deterministic gate
+- [ ] Agent / manager / iteration engine
+- [ ] Platform (projects, auth, admin)
 - [ ] Dashboard
-- [ ] Documentazione
-- [ ] Altro: ……
+- [ ] Documentation
+- [ ] Other: ……
 
-## Come l'hai verificato
+## How you verified it
 
-- Progetto attivo su cui l'hai provato:
-- Run o iterazione di riferimento, se ce n'è uno:
-- Cosa hai osservato che prima non andava e ora va:
+- Active project you tried it on:
+- Reference run or iteration, if there is one:
+- What you saw broken before and working now:
 
 ```
 npm run test:all      →
@@ -28,27 +28,26 @@ npm run check:routes  →
 
 ## Checklist
 
-- [ ] `npm test` verde (backend, `node:test`)
-- [ ] `cd dashboard && npx vitest run` verde — oppure `npm run test:all`
-- [ ] `npm run check:routes` senza `MISSING`
-- [ ] Se ho toccato `dashboard/src/`: ho eseguito `npm run dashboard:build` e verificato nel browser
-      (`dashboard/dist` non è nel repository: il bundle è solo locale)
-- [ ] Nessun valore del progetto bersaglio catturato all'import: passa da `src/config.js`
-      (live bindings) e dall'handle di `src/db.js`, perché il progetto attivo cambia a runtime
-- [ ] Niente segreti, percorsi personali, dati di progetti reali o file sotto `.data/` nel diff
+- [ ] `npm test` green (backend, `node:test`)
+- [ ] `cd dashboard && npx vitest run` green — or `npm run test:all`
+- [ ] `npm run check:routes` with no `MISSING`
+- [ ] If I touched `dashboard/src/`: I ran `npm run dashboard:build` and checked it in the browser
+      (`dashboard/dist` is not in the repository: the bundle is local only)
+- [ ] No target-project value captured at import time: it goes through `src/config.js`
+      (live bindings) and the `src/db.js` handle, because the active project changes at runtime
+- [ ] No secrets, personal paths, real project data or files under `.data/` in the diff
 
-### Se la PR aggiunge o modifica un gate
+### If the PR adds or modifies a gate
 
-- [ ] Il commento in testa al file nomina il **guasto reale** che lo motiva e il danno prodotto
-- [ ] Deterministico: nessuna chiamata a un LLM, verdetto stabile sullo stesso diff
-- [ ] Due test in `test/`: il diff che ha rotto le cose è vietato, **e** la versione legittima della
-      stessa operazione passa
-- [ ] Atterra in `advisory` (via `getSetting`), non direttamente in `enforce`
+- [ ] The comment at the top of the file names the **real failure** that motivates it and the damage it caused
+- [ ] Deterministic: no LLM call, stable verdict on the same diff
+- [ ] Two tests in `test/`: the diff that broke things is rejected, **and** the legitimate version of
+      the same operation passes
+- [ ] It lands in `advisory` (via `getSetting`), not straight in `enforce`
 
-## Rischio
+## Risk
 
 <!--
-  Se questa modifica è sbagliata, cosa succede? Chi lo scopre, e quando? ISL committa senza
-  supervisione quando l'autonomia è attiva: un errore in un gate o nella promozione non si ferma
-  a questa PR.
+  If this change is wrong, what happens? Who finds out, and when? ISL commits without supervision
+  when autonomy is on: a mistake in a gate or in promotion does not stop at this PR.
 -->
