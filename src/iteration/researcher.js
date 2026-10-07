@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { webSearch } from './websearch.js';
+import { webSearch, readPage } from './websearch.js';
 import { llmJson } from './llm.js';
 import { addFeature, countFeaturesByStatus, listFeatures } from '../db_iteration.js';
 import { createRun, finishRun, createProposal, setProposalStatus } from '../db.js';
@@ -120,11 +120,33 @@ async function refineSearch({ topics, snippets, kind, signal, max = 3 }) {
       signal,
     });
     const queries = (Array.isArray(data) ? data : data?.queries || []).filter((q) => typeof q === 'string' && q.trim()).slice(0, max);
+    /*
+     * QUESTO GIRO LEGGE LE PAGINE, non i frammenti.
+     *
+     * Misurato su una ricerca reale: i frammenti di DuckDuckGo sono 145-290 caratteri — didascalie.
+     * Lo schema di output di questo agente gli chiede pero' `competitorEvidence`, "quale prodotto
+     * fa questa cosa e cosa fa esattamente": una precisione che una didascalia non contiene. A un
+     * modello a cui si chiede un dettaglio che non ha resta solo inventarlo, ed e' il motivo per
+     * cui le proposte nate dalla ricerca restavano generiche.
+     *
+     * Il primo giro resta a frammenti: serve ad ampiezza, a capire cosa valga la pena cercare. E'
+     * questo secondo giro — gia' mirato — che deve portare sostanza, e ora apre davvero le fonti.
+     *
+     * Solo le prime due per query: scaricare pagine costa tempo di rete e spazio nel prompt, e la
+     * terza fonte su una query mirata aggiunge molto meno della prima sulla query successiva.
+     */
     const found = [];
     for (const q of queries) {
       const hits = await webSearch(q, { max: 5 });
-      // Deeper snippets than the first pass: this round is the one expected to carry detail.
       for (const h of hits) found.push(`- [${q}] ${h.title ? h.title + ': ' : ''}${h.snippet}`.slice(0, 500));
+
+      for (const h of hits.filter((x) => x.url).slice(0, 2)) {
+        const text = await readPage(h.url, { maxChars: 2500 });
+        // Una pagina che non si apre, o che e' quasi tutta navigazione, non vale una riga nel
+        // prompt: lo spazio tolto qui e' spazio tolto a una fonte che invece dice qualcosa.
+        if (text.length < 400) continue;
+        found.push(`- [FONTE ${h.url}] ${text}`);
+      }
     }
     return { queries, snippets: found };
   } catch {
