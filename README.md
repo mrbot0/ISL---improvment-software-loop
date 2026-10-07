@@ -1,250 +1,249 @@
 # ISL — Improvement Software Loop
 
-**Un sistema autonomo che migliora codice altrui e si rifiuta di rompere ciò che tocca.**
+**An autonomous system that improves other people's code and refuses to break what it touches.**
 
-Gli punti una cartella di codice — qualsiasi linguaggio, qualsiasi struttura — e ISL la legge,
-decide cosa vale la pena cambiare, scrive la modifica in una sandbox isolata, la sottopone a una
-batteria di controlli, e la fa atterrare **solo se li supera tutti**. Il tuo ramo principale e il
-tuo albero di lavoro non vengono toccati fino a quel momento.
+Point it at a directory of code — any language, any layout — and ISL reads it, decides what is worth
+changing, writes the change in an isolated sandbox, puts it through a battery of checks, and lands it
+**only if it passes all of them**. Your main branch and your working tree stay untouched until that
+moment.
 
-Versione **2.0.0** · Node ≥ 22.5 · sette dipendenze in produzione (`express`, `ws`, `cors`,
-`dotenv`, `diff`, `pdf-parse`, `mammoth`) · SQLite nativo, nessun ORM.
+Version **2.0.0** · Node ≥ 22.5 · seven production dependencies (`express`, `ws`, `cors`,
+`dotenv`, `diff`, `pdf-parse`, `mammoth`) · native SQLite, no ORM.
 
 ---
 
-## Il problema che risolve
+## The problem it solves
 
-Un modello linguistico sa scrivere una modifica plausibile. Non sa se funziona.
+A language model can write a plausible change. It cannot tell whether the change works.
 
-La differenza fra un assistente che suggerisce e un sistema che si può lasciare acceso sta tutta
-qui: cosa succede quando la modifica è sbagliata **e sembra giusta**. ISL è costruito attorno a
-quella domanda. Ogni controllo descritto sotto esiste perché un difetto preciso è passato, è
-arrivato agli utenti, ed è stato ricostruito a ritroso.
+The difference between an assistant that suggests and a system you can leave running comes down to
+one thing: what happens when the change is wrong **and looks right**. ISL is built around that
+question. Every check described below exists because a specific defect got through, reached users,
+and was reconstructed afterwards.
 
-Alcuni esempi, tutti reali e documentati nel codice:
+A few examples, all real and documented in the code:
 
-| Cosa è passato | Perché nessuno l'ha fermato |
+| What got through | Why nothing stopped it |
 |---|---|
-| Un file che non compila | il review pesa 0.2 → il totale restava ~80 su una soglia di 60 |
-| Una suite interamente rossa | i test pesano 0.15 → totale 83 |
-| Una barra di ricerca resa inutilizzabile | il reviewer le diede **95 su 100** |
-| Un campo aggiunto a uno schema senza migrazione | compila, i test passano, il servizio si avvia |
+| A file that does not compile | review is weighted 0.2 → the total stayed around 80 against a threshold of 60 |
+| An entirely red test suite | tests are weighted 0.15 → total 83 |
+| A search bar made unusable | the reviewer gave it **95 out of 100** |
+| A field added to a schema with no migration | it compiles, the tests pass, the service starts |
 
-Da lì discende il principio che regge tutto: **il giudizio di un modello non è una garanzia.** Dove
-una verifica può essere meccanica, è meccanica.
+From that comes the principle holding everything up: **a model's judgement is not a guarantee.**
+Wherever a check can be mechanical, it is mechanical.
 
 ---
 
-## Come funziona una iterazione
+## How one iteration works
 
-Dieci fasi, in sequenza, dentro un worktree git separato:
+Ten phases, in sequence, inside a separate git worktree:
 
 ```
 catalog → survey → plan → implement → review → security → regression → test → workbench → finalize
 ```
 
-**`catalog`** cataloga il codice reale: file, funzioni, complessità, punti caldi.
-**`survey`** cerca lavoro che valga la pena fare partendo da prove — TODO reali a righe reali,
-`catch` vuoti, file senza test, giunzioni fra servizi senza timeout.
-**`plan`** trasforma le prove in task piccoli e verificabili, ognuno con i file che tocca dichiarati.
-**`implement`** esegue i task (vedi *Lavorare in parallelo*).
-**`review` · `security` · `regression` · `test`** giudicano il risultato da quattro angoli diversi.
-**`workbench`** è la fase che si guadagna il posto: **avvia davvero l'applicazione** e rifiuta la
-modifica se non parte più — il guasto che ogni test unitario del mondo supera indenne.
-**`finalize`** decide: commit o annullamento.
+**`catalog`** catalogues the code as it really is: files, functions, complexity, hot spots.
+**`survey`** looks for work worth doing, starting from evidence — real TODOs at real line numbers,
+empty `catch` blocks, files with no tests, service-to-service seams with no timeout.
+**`plan`** turns that evidence into small, verifiable tasks, each one declaring the files it touches.
+**`implement`** runs the tasks (see *Working in parallel*).
+**`review` · `security` · `regression` · `test`** judge the result from four different angles.
+**`workbench`** is the phase that earns its place: it **actually starts the application** and rejects
+the change if it no longer boots — the failure every unit test in the world sails past untouched.
+**`finalize`** decides: commit or roll back.
 
-### I cancelli
+### The gates
 
-Alla fine la modifica incontra **undici veto deterministici**. Nessuno chiede un parere a un modello:
+At the end the change meets **eleven deterministic vetoes**. None of them asks a model for an opinion:
 
-`parse` (il file non compila) · `test` (ha rotto una suite che prima passava) · `regression` (ha
-rimosso qualcosa di pubblico) · `security` · `scope` (un identificatore usato e legato da nessuna
-parte) · `conflict` (marcatori di merge non risolti) · `schema` (campo senza migrazione) · `intent`
-(il diff non corrisponde al titolo del task) · `behaviour` · `dead-code` · `coverage`.
+`parse` (the file does not compile) · `test` (it broke a suite that used to pass) · `regression` (it
+removed something public) · `security` · `scope` (an identifier that is used and bound nowhere) ·
+`conflict` (unresolved merge markers) · `schema` (a field with no migration) · `intent` (the diff
+does not match the task title) · `behaviour` · `dead-code` · `coverage`.
 
-Accanto a loro, **le soglie minime per dimensione**. Una media pesata risponde a *«quanto è buono nel
-complesso»*; committare è un'altra domanda: *«c'è qualcosa che da solo squalifica»*. Una media
-diluisce per costruzione — è il motivo per cui un file non compilabile totalizzava 80. Una dimensione
-sotto la sua soglia squalifica la modifica qualunque sia il totale, e le soglie si configurano senza
-toccare il codice.
+Next to them, the **per-dimension floors**. A weighted average answers *"how good is this overall"*;
+committing is a different question: *"is there anything that disqualifies it on its own"*. An average
+dilutes by construction — that is why a file that would not compile scored 80. A dimension below its
+floor disqualifies the change whatever the total says, and the floors are configurable without
+touching code.
 
 ---
 
-## Gli agenti
+## The agents
 
-Tredici specialisti. Non sono processi separati: sono **le persone che l'implementer indossa** in
-base al task, ognuno con il proprio obiettivo, il proprio ambito di file e la propria inclinazione
-alla severità.
+Thirteen specialists. They are not separate processes: they are **the personas the implementer puts
+on** depending on the task, each with its own objective, its own file scope and its own leaning
+toward strictness.
 
-| Agente | Che cosa cerca |
+| Agent | What it looks for |
 |---|---|
-| 🛡️ **Security Auditor** | Falle di autorizzazione, injection, input non validato, dati esposti |
-| 🧪 **Test Engineer** | Copertura sui rami non testati, soprattutto errori e casi limite |
-| ⚡ **Performance Engineer** | Query N+1, indici mancanti, fetch illimitati, render inutili |
-| 🧹 **Code Quality** | Duplicazione, codice morto, gestione degli errori, nomi |
-| ♿ **Frontend / A11y** | Accessibilità: nomi, raggiungibilità da tastiera, focus, contrasto |
-| 🔗 **Services / Integration** | Le giunzioni fra servizi: contratti, timeout, retry, comportamento in guasto |
-| 🔧 **Workbench** | Che l'applicazione si avvii, serva e compili — non che passi i test |
-| 🛟 **Resilience Engineer** | Timeout, retry, idempotenza, degradazione controllata |
-| 📋 **Compliance Engineer** | Violazioni delle buone pratiche, per linguaggio |
-| 📚 **Documentation Engineer** | Documentazione che ha smesso di corrispondere al codice |
-| 🏗️ **Infrastructure Engineer** | IaC, container e CI allineati al codice |
-| 🧱 **Refactoring Engineer** | Confini fra moduli, logica condivisa, accoppiamento |
-| 🎨 **UX Engineer** | Usabilità, coerenza, stati di caricamento e vuoti |
+| 🛡️ **Security Auditor** | Authorization holes, injection, unvalidated input, exposed data |
+| 🧪 **Test Engineer** | Coverage on untested branches, above all errors and edge cases |
+| ⚡ **Performance Engineer** | N+1 queries, missing indexes, unbounded fetches, needless re-renders |
+| 🧹 **Code Quality** | Duplication, dead code, error handling, naming |
+| ♿ **Frontend / A11y** | Accessibility: names, keyboard reachability, focus, contrast |
+| 🔗 **Services / Integration** | The seams between services: contracts, timeouts, retries, behaviour under failure |
+| 🔧 **Workbench** | That the application starts, serves and builds — not that it passes tests |
+| 🛟 **Resilience Engineer** | Timeouts, retries, idempotency, graceful degradation |
+| 📋 **Compliance Engineer** | Best-practice violations, per language |
+| 📚 **Documentation Engineer** | Documentation that has stopped matching the code |
+| 🏗️ **Infrastructure Engineer** | IaC, containers and CI kept in line with the code |
+| 🧱 **Refactoring Engineer** | Module boundaries, shared logic, coupling |
+| 🎨 **UX Engineer** | Usability, consistency, loading and empty states |
 
-A ognuno arrivano nel prompt: il profilo del progetto, le regole che non deve violare, i rischi già
-registrati su quell'area, e **le regole permanenti** — lezioni ricavate da difetti che hanno
-raggiunto gli utenti attraversando una pipeline interamente verde.
+Each one gets, in its prompt: the project profile, the rules it must not break, the risks already
+recorded for that area, and **the standing rules** — lessons drawn from defects that reached users
+after crossing an entirely green pipeline.
 
-### Lavorare in parallelo senza pestarsi i piedi
+### Working in parallel without stepping on each other
 
-I task che non dichiarano file in comune vengono raggruppati in **onde** ed eseguiti insieme, ognuno
-nel proprio worktree. Ma l'assenza di collisioni sui file non basta: A può cambiare la firma di una
-funzione in `a.js` mentre B la chiama da `b.js` — nessuna collisione, ognuno passa i propri
-controlli, la combinazione è rotta.
+Tasks that declare no files in common are grouped into **waves** and run together, each in its own
+worktree. But the absence of file collisions is not enough: A can change a function's signature in
+`a.js` while B calls it from `b.js` — no collision, each one passes its own checks, the combination
+is broken.
 
-Per questo, fra un'onda e l'altra:
+So, between one wave and the next:
 
-- gli agenti ricevono **cosa è realmente cambiato** — quali export sono comparsi, spariti o hanno
-  cambiato firma — non solo i titoli dei task altrui;
-- i gate deterministici girano sull'accumulatore e il difetto viene **attribuito all'onda che lo ha
-  introdotto**: il fallimento dice *«introdotto nell'onda 2 dal task 3»*, non *«iterazione
-  annullata»*;
-- dove l'analisi non sa guardare lo **dichiara** invece di tacere. Un elenco vuoto accanto a un file
-  cambiato si legge come «non è cambiato niente», che è la conclusione opposta a quella vera.
+- the agents receive **what actually changed** — which exports appeared, disappeared or changed
+  signature — not just the titles of the other tasks;
+- the deterministic gates run on the accumulator and the defect is **attributed to the wave that
+  introduced it**: the failure says *"introduced in wave 2 by task 3"*, not *"iteration rolled
+  back"*;
+- where the analysis cannot look, it **says so** instead of keeping quiet. An empty list next to a
+  changed file reads as "nothing changed", which is the opposite of the truth.
 
 ---
 
-## Gli agent manager
+## The agent managers
 
-Tredici supervisori che osservano il sistema mentre lavora. Non scrivono codice: tengono d'occhio
-una dimensione ciascuno, si avvisano a vicenda, e ciò che trovano arriva agli agenti.
+Thirteen supervisors that watch the system while it works. They do not write code: each keeps an eye
+on one dimension, they alert each other, and what they find reaches the agents.
 
-| Manager | Dominio |
+| Manager | Domain |
 |---|---|
-| **Quality** | Verifica, review e qualità delle iterazioni |
-| **Throughput** | Velocità e costo della flotta |
-| **Risk** | Gravità ed esposizione di sicurezza |
-| **Insights** | Quali agenti sono efficaci, dove si concentra il lavoro |
-| **Operations** | Salute del runtime e controllo |
-| **Services** | Integrazione fra servizi e contratti |
-| **Workbench** | Esecuzione locale e salute dell'avvio |
-| **Implementation** | Pipeline di iterazione e flusso del backlog |
-| **Director** | Task critici e smistamento |
-| **Compliance** | Conformità alle buone pratiche, su tutti i linguaggi |
-| **Context** | Contesto del progetto e documentazione |
-| **Deployment** | Strategia di rilascio e deriva dell'infrastruttura |
-| **Reliability** | Errori degli agenti, anomalie, auto-miglioramento |
+| **Quality** | Verification, review and iteration quality |
+| **Throughput** | Fleet speed and cost |
+| **Risk** | Severity and security exposure |
+| **Insights** | Which agents are effective, where the work concentrates |
+| **Operations** | Runtime health and control |
+| **Services** | Integration between services, and contracts |
+| **Workbench** | Local execution and startup health |
+| **Implementation** | Iteration pipeline and backlog flow |
+| **Director** | Critical tasks and triage |
+| **Compliance** | Best-practice conformance, across every language |
+| **Context** | Project context and documentation |
+| **Deployment** | Release strategy and infrastructure drift |
+| **Reliability** | Agent errors, anomalies, self-improvement |
 
-### Come comunicano
+### How they communicate
 
-Tre canali, ognuno con una ragione precisa.
+Three channels, each with a precise reason to exist.
 
-**Verso gli agenti.** Quando un manager trova qualcosa finisce in memoria condivisa, indicizzata per
-area, e da lì nei prompt di planner, implementer e graders. Un rischio su un'area raggiunge chi
-lavora su quell'area.
+**To the agents.** When a manager finds something, it lands in shared memory, indexed by area, and
+from there in the prompts of the planner, the implementer and the graders. A risk on an area reaches
+whoever works on that area.
 
-**Fra manager.** Ognuno ha una posta in arrivo: i messaggi dei pari arrivano con il loro contenuto,
-non come semplice notifica. L'iscrizione sta nella classe base, non nelle singole sottoclassi — un
-canale che ogni manager deve ricordarsi di collegare è un canale che metà non collega.
+**Between managers.** Each has an inbox: messages from peers arrive with their content, not as a bare
+notification. The subscription lives in the base class, not in the individual subclasses — a channel
+every manager has to remember to wire up is a channel half of them do not wire up.
 
-**Il contesto che cambia il significato.** Quando un manager va in allarme, il suo brief porta con sé
-cosa stanno segnalando gli altri. *«I test falliscono»* vuol dire una cosa diversa quando Workbench
-sta dicendo che l'applicazione non si avvia affatto: nel secondo caso nei test non c'è niente da
-riparare.
-
----
-
-## Multi-progetto
-
-Un registro dei progetti in `platform.db`. **Ogni progetto ha il proprio database** sotto
-`.data/projects/<id>/`, con la propria struttura rilevata (radice, ramo base, cartelle di prodotto)
-e i propri agenti. Si cambia progetto attivo dalla dashboard, senza riavviare.
-
-Nessun nome di prodotto è cablato nei prompt: ciò che il sistema sa di un progetto lo ha letto da
-quel progetto.
+**The context that changes the meaning.** When a manager raises an alarm, its brief carries what the
+others are reporting. *"The tests are failing"* means something different when Workbench is saying
+the application does not start at all: in that case there is nothing in the tests to repair.
 
 ---
 
-## La dashboard
+## Multi-project
 
-React + Vite dietro login. Le run in corso e passate, il backlog, le proposte da approvare, lo stato
-di agenti e manager, i servizi e i container, lo schema del database, la memoria della flotta.
+A project registry in `platform.db`. **Every project has its own database** under
+`.data/projects/<id>/`, with its own detected layout (root, base branch, product directories) and its
+own agents. You switch the active project from the dashboard, without restarting.
 
-Da qui si avvia e si ferma il loop, si promuovono i commit, si ripara l'albero di lavoro sporco — e
-si **spegne ISL del tutto**: il server esce con un codice che il supervisore riconosce come arresto
-voluto ed esce a sua volta, invece di riavviarlo.
+No product name is hard-coded in the prompts: whatever the system knows about a project, it read from
+that project.
 
 ---
 
-## Requisiti
+## The dashboard
 
-- **Node ≥ 22.5** (usa `node:sqlite`, il modulo nativo)
-- Un modello locale servito da **Ollama**, o un endpoint compatibile
+React + Vite behind a login. Runs in progress and past runs, the backlog, proposals waiting for
+approval, the state of agents and managers, services and containers, the database schema, the fleet's
+memory.
+
+From here you start and stop the loop, promote commits, repair a dirty working tree — and **shut ISL
+down entirely**: the server exits with a code the supervisor recognizes as an intentional shutdown
+and exits in turn, instead of restarting it.
+
+---
+
+## Requirements
+
+- **Node ≥ 22.5** (it uses `node:sqlite`, the native module)
+- A local model served by **Ollama**, or a compatible endpoint
 - Git
 
-## Avvio
+## Startup
 
 ```bash
 npm install
-cp .env.example .env     # imposta DEFAULT_PROJECT_PATH e AUTH_SECRET
+cp .env.example .env     # set DEFAULT_PROJECT_PATH and AUTH_SECRET
 npm --prefix dashboard install && npm --prefix dashboard run build
 node supervisor.mjs
 ```
 
-Poi apri `http://localhost:7878`.
+Then open `http://localhost:7878`.
 
-Avvia **sempre `supervisor.mjs`**, mai `src/server.js` direttamente: il supervisore alza lo heap e
-riavvia il server entro pochi secondi dopo un crash o un esaurimento di memoria. L'unica uscita che
-non viene riavviata è l'arresto richiesto dall'operatore.
+**Always start `supervisor.mjs`**, never `src/server.js` directly: the supervisor raises the heap and
+restarts the server within seconds of a crash or an out-of-memory. The only exit it does not restart
+is a shutdown requested by the operator.
 
-Le modifiche alla dashboard richiedono `npm --prefix dashboard run build`: viene servita da `dist`.
+Dashboard changes require `npm --prefix dashboard run build`: it is served out of `dist`.
 
-## Configurazione
+## Configuration
 
-Le chiavi stanno in `.env.example`, commentate. Le due che contano:
+The keys live in `.env.example`, with comments. The two that matter:
 
-- **`DEFAULT_PROJECT_PATH`** — la cartella del codice da migliorare. Senza, ISL parte su sé stesso.
-- **`AUTH_SECRET`** — il valore predefinito è un segnaposto. Su qualunque macchina raggiungibile da
-  altri va cambiato: è l'unica cosa che protegge un piano di controllo che esegue codice e scrive
-  commit.
+- **`DEFAULT_PROJECT_PATH`** — the directory of the code to improve. Without it, ISL starts on itself.
+- **`AUTH_SECRET`** — the default value is a placeholder. On any machine other people can reach, it
+  has to be changed: it is the only thing protecting a control plane that executes code and writes
+  commits.
 
-ISL **non va esposto su una rete pubblica**. Vedi [SECURITY.md](SECURITY.md).
+ISL **must not be exposed on a public network**. See [SECURITY.md](SECURITY.md).
 
-## Test
+## Tests
 
 ```bash
-npm test                      # 254 test, test runner di Node, nessuna dipendenza
-npm --prefix dashboard test   # 356 test, Vitest
+npm test                      # 254 tests, Node's test runner, no dependencies
+npm --prefix dashboard test   # 356 tests, Vitest
 ```
 
-Alcuni meritano una menzione, perché non verificano funzioni ma **proprietà che si perderebbero
-senza far fallire niente**:
+A few deserve a mention, because they do not check functions but **properties that would be lost
+without anything failing**:
 
-- `scopeGate.test.js` — la forma esatta che rese inutilizzabile una barra di ricerca in produzione
-  con un punteggio di review di 95 su 100
-- `composeSafety.test.js` — legge il sorgente e fallisce se un comando compose porta `-v`. Quel flag
-  cancella il volume del database e, a differenza di tutto il resto, non ha un annullamento
-- `standingRules.test.js` — che le regole permanenti restino generiche: prende il nome del progetto
-  attivo dalla configurazione, quindi vale per qualunque prodotto ISL stia governando
-- `floorBreaches.test.js` — che una dimensione **non misurata** non venga scambiata per bocciata:
-  una fase saltata non deve annullare una run
+- `scopeGate.test.js` — the exact shape that made a search bar unusable in production with a review
+  score of 95 out of 100
+- `composeSafety.test.js` — reads the source and fails if a compose command carries `-v`. That flag
+  wipes the database volume and, unlike everything else, has no undo
+- `standingRules.test.js` — that the standing rules stay generic: it takes the active project's name
+  from the configuration, so it holds for whatever product ISL is governing
+- `floorBreaches.test.js` — that an **unmeasured** dimension is not mistaken for a failed one: a
+  skipped phase must not roll back a run
 
-## Contribuire
+## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) ·
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
-## Licenza
+## License
 
-**GNU Affero General Public License v3.0** — testo completo in [LICENSE](LICENSE).
+**GNU Affero General Public License v3.0** — full text in [LICENSE](LICENSE).
 
-Sei libero di usare, studiare, modificare e ridistribuire ISL. Se lo modifichi e lo rendi
-disponibile ad altri — anche solo facendolo girare come servizio raggiungibile in rete, senza
-distribuirne una copia — devi offrire a chi lo usa il sorgente della tua versione. È la clausola che
-distingue l'AGPL dalla GPL (sezione 13), ed è deliberata: ISL è un piano di controllo che si usa
-attraverso un'interfaccia web, e senza quella clausola chiunque potrebbe offrirlo come servizio
-chiuso senza restituire nulla.
+You are free to use, study, modify and redistribute ISL. If you modify it and make it available to
+others — even just by running it as a service reachable over a network, without distributing a copy
+— you must offer its users the source of your version. That is the clause separating the AGPL from
+the GPL (section 13), and it is deliberate: ISL is a control plane used through a web interface, and
+without that clause anyone could offer it as a closed service and give nothing back.
 
     ISL — Improvement Software Loop
     Copyright (C) 2026  mrbot0
