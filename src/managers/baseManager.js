@@ -37,6 +37,9 @@ export class BaseManager {
     this._timer = null;
     this._subs = [];
     this._peers = [];
+    // Posta in arrivo: capienza fissa, i piu' vecchi cadono. Vedi inbox().
+    this._inbox = [];
+    this._inboxMax = 20;
     this.log = log.for(`manager:${name}`);
   }
 
@@ -154,8 +157,49 @@ export class BaseManager {
     this._publish();
   }
 
+  /**
+   * La posta in arrivo: cosa i pari hanno detto a QUESTO manager.
+   *
+   * `send()` scriveva nel database ed emetteva sul bus, e lì finiva. L'unico iscritto a
+   * `manager.message` usava l'evento come campanello — richiamava la propria analisi senza mai
+   * aprire il payload — e l'unico vero lettore dei messaggi salvati era la dashboard. I manager
+   * comunicavano con l'operatore, non fra loro.
+   *
+   * Qui ogni manager tiene le ultime cose che gli sono state dette, così `analyze()` può
+   * consultarle. Capienza fissa: una coda che cresce diventa una perdita di memoria in un processo
+   * che resta acceso per giorni, e un messaggio di ieri non cambia una decisione di adesso.
+   */
+  inbox({ kind = null, limit = 10 } = {}) {
+    const items = kind ? this._inbox.filter((m) => m.kind === kind) : this._inbox;
+    return items.slice(-limit);
+  }
+
+  /**
+   * Il contesto che cambia il significato della propria conclusione.
+   *
+   * "I test falliscono" vuol dire una cosa diversa quando Workbench sta segnalando che
+   * l'applicazione non si avvia affatto. `peerConcerns()` esisteva già, scritta esattamente per
+   * questo, e non la chiamava nessuno: allegarla qui la rende viva per tutti i manager in una volta
+   * sola, e la porta dove serve — nel brief che la dashboard mostra e che `managerConcerns()` passa
+   * al planner.
+   *
+   * Solo quando questo manager è in allarme: a riposo il contesto dei pari è rumore, e questo
+   * metodo gira a ogni pubblicazione.
+   */
+  _attachPeerContext() {
+    if (this.brief.status !== 'alert' && this.brief.status !== 'acting') {
+      if (this.brief.peerContext) this.brief.peerContext = null;
+      return;
+    }
+    // `peerConcerns` restituisce solo nome, stato, titolo e una raccomandazione: non copia il
+    // peerContext altrui, quindi i brief non si annidano l'uno nell'altro a ogni pubblicazione.
+    const peers = this.peerConcerns();
+    this.brief.peerContext = peers.length ? peers : null;
+  }
+
   _publish() {
     try {
+      this._attachPeerContext();
       publishManagerBrief(this.name, this.brief);
       busEmit('manager.brief', { manager: this.name, brief: this.brief });
     } catch {
@@ -163,8 +207,26 @@ export class BaseManager {
     }
   }
 
+  /**
+   * Si iscrive alla propria posta. Nella classe base di proposito: un canale che ogni sottoclasse
+   * deve ricordarsi di collegare e' un canale che meta' delle sottoclassi non collega — ed e'
+   * esattamente com'era prima, con un solo manager iscritto a `manager.message` su tredici.
+   */
+  _listenForMessages() {
+    this.on('manager.message', (e) => {
+      if (!e || e.from === this.name) return;
+      if (e.to !== this.name && e.to !== 'broadcast') return;
+      this._inbox.push({
+        from: e.from, kind: e.kind, title: e.title || null,
+        severity: e.severity || 'info', payload: e.payload, at: Date.now(),
+      });
+      if (this._inbox.length > this._inboxMax) this._inbox.shift();
+    });
+  }
+
   start() {
     if (this._timer) return;
+    this._listenForMessages();
     this._publish();
     this._timer = setInterval(() => this._publish(), this.publishIntervalMs);
     if (this._timer.unref) this._timer.unref();
