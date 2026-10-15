@@ -206,8 +206,21 @@ export default function Context({ toast }) {
       <div className="card">
         <div className="card-head">
           <span className="card-title">Documents ({docs.length})</span>
-          <span className="text-[10px] text-slate-500">
+          <span className="flex items-center gap-2 text-[10px] text-slate-500">
             {Object.entries(data.documents?.byType || {}).map(([t, n]) => `${n} ${t}`).join(' · ')}
+            {/*
+              Each failing document already carries its own pill, but five among fifty-nine rows are
+              only visible to someone who scrolls. The profile above was derived without those
+              files, which makes this the one number worth stating up front.
+            */}
+            {data.documents?.failed > 0 && (
+              <span
+                className="pill bg-rose-500/15 text-rose-300"
+                title="These documents could not be read, so the project profile was built without them."
+              >
+                {data.documents.failed} unreadable
+              </span>
+            )}
           </span>
         </div>
         <div className="max-h-96 divide-y divide-ink-800 overflow-y-auto">

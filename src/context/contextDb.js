@@ -71,8 +71,15 @@ export function upsertDocument(doc) {
     `INSERT INTO documents (rel_path, type, title, size, chars, hash, text, mtime, stale, error, indexed_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
      ON CONFLICT(rel_path) DO UPDATE SET
-       type = excluded.type, title = excluded.title, size = excluded.size, chars = excluded.chars,
-       hash = excluded.hash, text = excluded.text, mtime = excluded.mtime, stale = 0,
+       type = excluded.type, title = excluded.title, size = excluded.size,
+       -- A failed re-read must not destroy a good extraction. Degrading to the last known text is
+       -- strictly better than degrading to nothing, and the error column still records what
+       -- happened, so the retry on the next pass is unaffected.
+       text = CASE WHEN excluded.error IS NOT NULL AND COALESCE(excluded.text, '') = ''
+                   THEN documents.text ELSE excluded.text END,
+       chars = CASE WHEN excluded.error IS NOT NULL AND COALESCE(excluded.text, '') = ''
+                    THEN documents.chars ELSE excluded.chars END,
+       hash = excluded.hash, mtime = excluded.mtime, stale = 0,
        error = excluded.error, indexed_at = excluded.indexed_at`,
   ).run(
     doc.relPath,
@@ -116,8 +123,18 @@ export function getDocumentByPath(relPath, { withText = true } = {}) {
   return r ? rowToDoc(r, withText) : null;
 }
 
+/**
+ * What the ingester needs in order to decide whether a file still has to be read: its last-seen
+ * mtime and whether the last attempt actually produced anything. `error` is part of that answer —
+ * a skip that cannot see a past failure caches that failure for ever.
+ */
 export const documentHashes = () =>
-  Object.fromEntries(db.prepare('SELECT rel_path, hash, mtime FROM documents').all().map((r) => [r.rel_path, { hash: r.hash, mtime: r.mtime }]));
+  Object.fromEntries(
+    db
+      .prepare('SELECT rel_path, hash, mtime, error FROM documents')
+      .all()
+      .map((r) => [r.rel_path, { hash: r.hash, mtime: r.mtime, error: r.error }]),
+  );
 
 export function pruneDocumentsNotIn(relPaths) {
   const keep = new Set(relPaths);
@@ -140,7 +157,11 @@ export function documentStats() {
   const byType = Object.fromEntries(rows.map((r) => [r.type, r.n]));
   const total = rows.reduce((a, r) => a + r.n, 0);
   const stale = db.prepare('SELECT COUNT(*) n FROM documents WHERE stale = 1').get().n;
-  return { total, byType, stale, chars: rows.reduce((a, r) => a + (r.chars || 0), 0) };
+  // Documents we could not read. Without this number the fleet reported "documentation healthy"
+  // over a corpus whose architecture documents were all empty — an operator cannot act on a
+  // failure nobody counts, and a silently absent document reads exactly like one that says nothing.
+  const failed = db.prepare("SELECT COUNT(*) n FROM documents WHERE error IS NOT NULL AND error <> ''").get().n;
+  return { total, byType, stale, failed, chars: rows.reduce((a, r) => a + (r.chars || 0), 0) };
 }
 
 /* -------------------------------- profile --------------------------------- */
@@ -158,12 +179,61 @@ export const setProfile = (profile) => setContext('profile', { ...profile, updat
 
 /* ------------------------------- questions -------------------------------- */
 
+/** Same question, differently typed: whitespace and case must not create a second row. */
+const questionKey = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Install a freshly generated question set, preserving everything a human answered.
+ *
+ * A question carries `source: 'pending'` precisely because the documentation does NOT answer it,
+ * so the operator's reply is the only fact here that no rebuild can reproduce — and it feeds the
+ * "Known constraints" block of every planner, implementer and reviewer prompt. This used to open
+ * with a bare `DELETE`, so a second "Build context" silently erased it.
+ *
+ * The rule: a rebuild owns the model's rows and may replace them freely; it never discards the
+ * operator's. A question the model has stopped asking is carried over rather than dropped, because
+ * losing the answer is worse than keeping a question that has outlived its list.
+ */
 export function replaceQuestions(questions) {
-  db.exec('DELETE FROM context_questions');
-  const stmt = db.prepare(
-    'INSERT INTO context_questions (ord, question, answer, source, rationale, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-  );
-  questions.forEach((q, i) => stmt.run(i, q.question, q.answer ?? null, q.source ?? 'pending', q.rationale ?? null, now()));
+  const human = new Map();
+  for (const r of db
+    .prepare("SELECT question, answer, source, rationale FROM context_questions WHERE source = 'user' AND answer IS NOT NULL AND TRIM(answer) <> ''")
+    .all()) {
+    human.set(questionKey(r.question), r);
+  }
+
+  // Build the whole set before touching the table, so a malformed payload cannot leave it empty.
+  const rows = [];
+  const carried = new Set();
+  for (const q of questions ?? []) {
+    const key = questionKey(q.question);
+    const prior = human.get(key);
+    if (prior) {
+      carried.add(key);
+      rows.push({ question: q.question, answer: prior.answer, source: 'user', rationale: prior.rationale ?? q.rationale ?? null });
+    } else {
+      // 'user' is never accepted from the model: it is the marker that makes an answer immortal,
+      // so only answerQuestion() may set it.
+      const source = q.source === 'auto' || q.source === 'pending' ? q.source : q.answer ? 'auto' : 'pending';
+      rows.push({ question: q.question, answer: q.answer ?? null, source, rationale: q.rationale ?? null });
+    }
+  }
+  for (const [key, r] of human) {
+    if (!carried.has(key)) rows.push({ question: r.question, answer: r.answer, source: 'user', rationale: r.rationale ?? null });
+  }
+
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM context_questions');
+    const stmt = db.prepare(
+      'INSERT INTO context_questions (ord, question, answer, source, rationale, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    rows.forEach((r, i) => stmt.run(i, r.question, r.answer, r.source, r.rationale, now()));
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 const rowToQ = (r) => ({

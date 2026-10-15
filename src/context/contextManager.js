@@ -165,8 +165,11 @@ export async function buildContext({ signal, force = false } = {}) {
   if (questions.length) replaceQuestions(questions);
 
   const pending = countPendingQuestions();
-  // The project is "context ready" once we have a profile and no open gaps.
-  const ready = !!profile && pending === 0;
+  // The project is "context ready" once we have a profile and no open gaps. "No gaps" has to mean
+  // gaps that were looked for and closed: when question generation fails outright the table stays
+  // empty, `pending` is 0, and an onboarding that never happened would otherwise pass for complete.
+  const asked = listQuestions().length;
+  const ready = !!profile && asked > 0 && pending === 0;
   if (ACTIVE_PROJECT_ID) markContextReady(ACTIVE_PROJECT_ID, ready);
   emit('context.built', { docs: ingest.stats.total, pending, ready });
   notify({
@@ -392,13 +395,15 @@ export class ContextManager extends BaseManager {
       this.setBrief({ status: 'idle', headline: 'No project database open.', stats: {} });
       return;
     }
+    const asked = (() => { try { return listQuestions().length; } catch { return 0; } })();
     const stats = {
       documents: docs.total,
       docTypes: docs.byType,
       staleDocs: docs.stale,
+      unreadableDocs: docs.failed,
       pendingQuestions: pending,
       openFindings: findings.length,
-      contextReady: !!profile && pending === 0,
+      contextReady: !!profile && asked > 0 && pending === 0,
     };
 
     let status = 'watching';
@@ -412,6 +417,16 @@ export class ContextManager extends BaseManager {
       status = 'alert';
       headline = `Context drafted from ${docs.total} docs — ${pending} question(s) still need your answer.`;
       recommendations.push(`Answer the ${pending} open onboarding question(s) so agents work with full context.`);
+    } else if (docs.failed) {
+      /*
+       * A document that could not be read is not a document that says nothing, and the difference
+       * decides whether the profile below can be trusted: the invariants and risks every agent
+       * treats as ground truth were derived from a corpus missing these files. Reporting
+       * "documentation healthy" over them is the one answer that guarantees nobody looks.
+       */
+      status = 'alert';
+      headline = `${docs.failed} of ${docs.total} document(s) could not be read — the project profile was derived without them.`;
+      recommendations.push('Open the Context tab and check the failing documents: the profile is built on an incomplete corpus.');
     } else if (findings.length) {
       status = 'watching';
       headline = `Context ready. ${findings.length} documentation finding(s) open${docs.stale ? `, ${docs.stale} stale doc(s)` : ''}.`;
