@@ -111,11 +111,20 @@ export async function security({ diff, signal, logger = log.for('security-grade'
     summary: [secScan.findings.length ? secScan.summary : '', safeScan.findings.length ? safeScan.summary : ''].filter(Boolean).join(' | ') || 'No security/safety issues found.',
   };
 
+  /*
+   * The security auditor was the only LLM-driven grader judging a diff with no idea what the
+   * application is. Several of a project's recorded invariants ARE security rules, and the ones
+   * that matter most are never generic: "money movements must be idempotent", "a microservice
+   * outage must never block user access". Without them this grader can only find the
+   * vulnerabilities that would be vulnerabilities in any codebase.
+   */
+  const briefing = briefingFor('security', { files: diffPaths(diff), includeSituation: false });
   const system =
     'You are a security auditor. Inspect this diff for introduced vulnerabilities: injection, ' +
     'missing authorization, secrets, unsafe input handling, broken auth, data exposure. ' +
     'Reply with a single integer 0-100 on the first line (100 = no concerns, below 60 = a real ' +
-    'vulnerability was introduced), then one sentence naming the top concern if any.';
+    'vulnerability was introduced), then one sentence naming the top concern if any.' +
+    (briefing ? `\n\n${briefing}` : '');
   let text = '';
   let usage = { promptTokens: 0, evalTokens: 0 };
   try {

@@ -165,7 +165,7 @@ function situationLine() {
 /**
  * Compose the briefing for one audience.
  *
- * @param {'planner'|'reviewer'|'implementer'|'manager'|'agent'} audience
+ * @param {'planner'|'reviewer'|'security'|'implementer'|'manager'|'agent'} audience
  * @param {{files?: string[], area?: string|null, includeSituation?: boolean}} opts
  * @returns {string} a prompt block, or '' when there is nothing worth saying
  */
@@ -196,7 +196,15 @@ export function briefingFor(audience, { files = [], area = null, includeSituatio
      * that apply to the files in front of it. Scoped by area so the block stays short enough to be
      * read rather than skimmed.
      */
+    /*
+     * The security auditor needs the same slice, and was the one LLM-driven grader getting none of
+     * it. Plenty of a project's invariants ARE security rules — "money movements must be
+     * idempotent", "migrations must use prisma migrate deploy; db push is forbidden" — and an
+     * auditor that has not been told them can only find the vulnerabilities that look like
+     * vulnerabilities in any codebase, never the ones specific to this one.
+     */
     case 'reviewer':
+    case 'security':
       parts.push(
         identityBlock(p) && `About this application:\n${identityBlock(p)}`,
         areaBlock(touched),
@@ -239,7 +247,7 @@ export function briefingSnapshot() {
       keyFlows: arr(p?.keyFlows).length,
     },
     audiences: Object.fromEntries(
-      ['planner', 'reviewer', 'implementer', 'manager'].map((a) => [a, briefingFor(a, { includeSituation: false }).length]),
+      ['planner', 'reviewer', 'security', 'implementer', 'manager'].map((a) => [a, briefingFor(a, { includeSituation: false }).length]),
     ),
   };
 }

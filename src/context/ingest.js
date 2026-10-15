@@ -57,8 +57,12 @@ export async function ingestDocuments({ force = false } = {}) {
     try {
       const stat = fs.statSync(abs);
       const prev = known[relPath];
-      // Cheap skip: unchanged mtime means we already have the text.
-      if (!force && prev && prev.mtime === stat.mtimeMs) {
+      // Cheap skip: unchanged mtime means we already have the text. It has to require that the
+      // last attempt SUCCEEDED, or the shortcut turns a one-off failure into a permanent verdict —
+      // the file never changes again, so it is never read again. That is how six PDFs stayed empty
+      // across every rebuild: a locked file, an out-of-memory mid-parse and a repaired extractor
+      // all look identical to a skip that only compares timestamps.
+      if (!force && prev && prev.mtime === stat.mtimeMs && !prev.error) {
         skipped++;
         continue;
       }
@@ -72,10 +76,17 @@ export async function ingestDocuments({ force = false } = {}) {
     }
   }
 
-  const removed = pruneDocumentsNotIn(seen);
+  // Prune only on evidence. `walk()` swallows readdirSync errors and returns [], so a renamed
+  // folder, an unmounted network drive or a permissions change is indistinguishable from "every
+  // document was deleted" — and acting on that reading destroys the entire index. An empty scan
+  // is a reason to say nothing changed, never to forget everything.
+  const removed = files.length ? pruneDocumentsNotIn(seen) : 0;
   const stats = documentStats();
+  if (!files.length && stats.total) {
+    log.warn('context', `no documents found under ${root} but ${stats.total} are on record — index kept, the folder may be unreachable`);
+  }
   log.info('context', `ingested docs — ${extracted} new/changed, ${skipped} unchanged, ${failed} failed, ${removed} removed`, {
-    data: { total: stats.total },
+    data: { total: stats.total, failed: stats.failed },
   });
   return { scanned: files.length, extracted, skipped, failed, removed, stats };
 }

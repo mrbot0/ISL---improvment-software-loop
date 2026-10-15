@@ -132,3 +132,43 @@ test('the snapshot reports what the briefing is built from', () => {
   assert.equal(s.counts.areas, 3);
   assert.ok(s.audiences.planner > s.audiences.reviewer);
 });
+
+/*
+ * THE GRADER THAT AUDITED SECURITY WITHOUT KNOWING THE RULES.
+ *
+ * The distribution above was wired into the reviewer and missed the security grader — the only
+ * other angle of the four that asks a model for a judgement. Yet several of a project's recorded
+ * invariants are themselves security rules: in the fixture above, "migrations must use prisma
+ * migrate deploy; db push is forbidden in production". An auditor never told that cannot score a
+ * diff that violates it, so it finds only the vulnerabilities generic to any codebase.
+ */
+test('the security auditor is given the invariants it is supposed to enforce', () => {
+  const b = briefingFor('security', { files: ['services/circulation/src/x.js'], includeSituation: false });
+
+  assert.match(b, /INVARIANTS/);
+  assert.match(b, /prisma migrate deploy/, 'a security-relevant invariant must reach the auditor');
+  assert.match(b, /microservices/, 'and the area the diff touches');
+  assert.match(b, /Assuming existence of models/, 'along with the recorded risks');
+});
+
+test('an unknown audience still gets the rules rather than nothing', () => {
+  // A typo'd or future audience must degrade to the generic briefing, never to silence.
+  const b = briefingFor('surveyor', { includeSituation: false });
+
+  assert.match(b, /INVARIANTS/);
+  assert.notEqual(b, '');
+});
+
+test('the security grader actually assembles a briefing', () => {
+  /*
+   * Pinned against the source, in the manner of composeSafety.test.js: the wiring is what was
+   * missing, and an edit that drops it would otherwise break nothing a test can see — the grader
+   * would keep returning plausible scores, just blind again.
+   */
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'iteration', 'graders.js'), 'utf8');
+  const securityBody = src.slice(src.indexOf('export async function security'), src.indexOf('export async function test'));
+
+  assert.ok(securityBody.length > 0, 'premise: the security grader was located in the source');
+  assert.match(securityBody, /briefingFor\('security'/, 'the security grader must request a briefing');
+  assert.match(securityBody, /\$\{briefing\}/, 'and must interpolate it into the prompt it sends');
+});

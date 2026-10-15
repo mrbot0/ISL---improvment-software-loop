@@ -49,9 +49,26 @@ export async function extractText(absPath) {
     if (TEXT_EXT.has(ext.toLowerCase())) {
       text = buffer.toString('utf8');
     } else if (type === 'pdf') {
-      const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
-      const data = await pdfParse(buffer);
-      text = data.text || '';
+      // pdf-parse v2 is ESM-only, publishes no `./lib/*` subpath and has no default export: it
+      // exports a PDFParse class. The v1-shaped call this replaces threw on import, so every PDF
+      // was stored empty. `pages[].text` is preferred over `parsed.text` because the latter
+      // interleaves "-- 1 of 38 --" markers, which a model reads as content inside the corpus.
+      const { PDFParse } = await import('pdf-parse');
+      const parser = new PDFParse({ data: buffer });
+      try {
+        const parsed = await parser.getText();
+        text = Array.isArray(parsed?.pages)
+          ? parsed.pages.map((p) => p?.text || '').join('\n')
+          : parsed?.text || '';
+      } finally {
+        // Releases the pdf.js worker. Without it a folder of PDFs leaks one per document, and the
+        // supervisor restarting on an out-of-memory would be the only thing to notice.
+        try {
+          await parser.destroy();
+        } catch {
+          /* already torn down */
+        }
+      }
     } else if (type === 'docx') {
       const mammoth = await import('mammoth');
       const { value } = await mammoth.extractRawText({ buffer });
