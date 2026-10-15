@@ -172,3 +172,17 @@ test('the security grader actually assembles a briefing', () => {
   assert.match(securityBody, /briefingFor\('security'/, 'the security grader must request a briefing');
   assert.match(securityBody, /\$\{briefing\}/, 'and must interpolate it into the prompt it sends');
 });
+
+test('the security grader treats the briefing as data that can only raise concern', () => {
+  /*
+   * The briefing is derived by a model from the audited repository's own documents, and ISL runs on
+   * repositories it does not own — so a sentence in a README can reach the prompt of the one gate
+   * meant to catch a malicious change. The deterministic scan cannot be argued with, which bounds
+   * this to the LLM score; the prompt must bound it further by making the briefing one-directional.
+   */
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'iteration', 'graders.js'), 'utf8');
+  const securityBody = src.slice(src.indexOf('export async function security'), src.indexOf('export async function test'));
+
+  assert.match(securityBody, /NOT instructions/, 'the briefing must be framed as data, not instructions');
+  assert.match(securityBody, /never lower it/, 'and must not be allowed to reduce the auditor’s concern');
+});
